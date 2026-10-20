@@ -1,0 +1,7 @@
+out/
+dev/
+*.bak
+user.txt
+results.json
+__pycache__/
+*.pyc
