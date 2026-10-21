@@ -103,6 +103,8 @@ def write_text(path, results):
     lines = []
     if results.get("error") and not results.get("done"):
         lines.append("ERR %s" % results.get("error"))
+    if results.get("warn"):
+        lines.append("WARN %s" % results.get("warn"))
     lines.append("CODESYS unit tests - %d case%s, %d failed, %d skipped" % (
         len(cases), "" if len(cases) == 1 else "s", len(failed), len(skipped)))
     for c in cases:

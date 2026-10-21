@@ -80,7 +80,7 @@ Add FB_<Feature>_Test (xunit style) covering happy path, boundary, guard.
 Register it in PRG_Tests and bump g_uiSuitesTotal.
 Run: powershell -NoProfile -ExecutionPolicy Bypass -File <skill>\ut.ps1 run `
      -Project <abs .project> -UserFile <user.txt>
-Do not commit credentials. Do not use OnlineChangeOption.Force.
+Do not commit credentials. Use `ut.ps1 -Change Never|Keep` only; Force/Try are rejected by design.
 ```
 
 ## 3. Regression
@@ -151,7 +151,7 @@ login fails - same rule as codesys-connect.
 ## 6. Safety rails (do not break these)
 
 - Credentials: `-UserFile` or env. Never write passwords into the repo or work files.
-- Login option: `change=Never`. **Never** auto-escalate to `Force`
+- Login option: `change=Never` or `Keep`. **`Force` / `Try` are rejected** by the CLI
   (Force = full download, stops the app, clears variables). `run` never logs in
   with Try either - it would update the running program behind the user's back.
 - Timeout cleanup kills only this run's process tree; never the user's IDE or a

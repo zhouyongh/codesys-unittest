@@ -117,7 +117,7 @@ function Ensure-Runtime {
         } catch {}
     }
     if ($restart) {
-        try { Stop-Process -Id $proc.Id -Force } catch {}
+        try { & taskkill /PID $proc.Id /T /F 2>&1 | Out-Null } catch {}
         Start-Sleep -Seconds 2
         $proc = $null
     }
@@ -164,7 +164,7 @@ function Stop-Runtime {
     }
     Write-Host "stopping runtime pid=$($target.Id -join ',')"
     foreach ($p in $target) {
-        try { Stop-Process -Id $p.Id -Force } catch {}
+        try { & taskkill /PID $p.Id /T /F 2>&1 | Out-Null } catch {}
     }
     Start-Sleep -Seconds 2
     $left = @(Get-RtsProcess)

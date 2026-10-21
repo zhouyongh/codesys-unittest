@@ -6,12 +6,14 @@
 #   project=<abs .project path>
 #   result=<output json path>
 #   log=<log file>
-#   user= password= device= app= address= port=   (user/password OPTIONAL -
-#     prefer env CODESYS_UNITTEST_USER/PASSWORD or the codesys-connect session;
-#     never write passwords into target.txt)
+#   device= app= address= port=
 #   timeout_sec=60
-#   change=Never|Try|Keep|Force   (login only; NEVER auto-escalates to Force)
-#   start_if_stopped=0|1          (1 = start the app when it is not RUN)
+#   change=Never|Keep          (login only; Force/Try rejected by ut.ps1)
+#   start_if_stopped=0|1       (1 = start the app when it is not RUN)
+#
+# Login credentials are NOT read from target.txt. They come from
+#   CODESYS_UNITTEST_USER / CODESYS_UNITTEST_PASSWORD  or the codesys-connect
+#   session file. Never write passwords into target.txt.
 #
 # Output results.json (UTF-8):
 #   { "done": true, "caseCount": N, "failCount": N, "skipCount": N,
@@ -318,6 +320,9 @@ def to_text(v):
 def to_status(v):
     """Return (status, note). Anything unreadable counts as a failure."""
     s = to_text(v).strip()
+    # CODESYS prints typed values as UINT#0 / LREAL#1.0 - strip the prefix
+    if u"#" in s:
+        s = s.split(u"#")[-1].strip()
     try:
         n = int(float(s))
     except Exception:
@@ -382,8 +387,19 @@ def arm_run(oapp):
         fail(u"cannot set GVL_Test.g_xReset: %r" % (e,))
         return False
 
-    # hold the reset for more than one task cycle so every suite sees it
-    time.sleep(1.0)
+    # hold the reset long enough for every suite to see it, but poll the
+    # read-back so a fast task does not force a full sleep
+    deadline = time.time() + 1.0
+    while time.time() < deadline:
+        try:
+            done0 = to_uint(oapp.read_value(u"GVL_Test.g_xDone"))
+            n0 = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
+            f0 = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
+            if done0 == 0 and n0 == 0 and f0 == 0:
+                break
+        except Exception:
+            pass
+        time.sleep(0.1)
 
     has_overflow = False
     try:
@@ -618,8 +634,11 @@ def run_tests():
              % (plc_fail, computed_fail), out["cases"])
         return
     if plc_skip != computed_skip:
+        # not fatal (skip bookkeeping can lag), but make it visible
         log_write(LOG, u"WARN skipCount mismatch plc=%s read=%s"
                   % (plc_skip, computed_skip))
+        out["warn"] = (u"skipCount mismatch: PLC reports %s, read %s"
+                       % (plc_skip, computed_skip))
 
     out["caseCount"] = len(out["cases"])
     out["failCount"] = computed_fail

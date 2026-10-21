@@ -76,7 +76,7 @@ Exit code 0 only when the run really executed and passed: **zero cases, a missin
 | `-UserFile` | Credentials file (preferred - keeps the password off the command line) |
 | `-User` / `-Password` | Target login (password via env `CODESYS_UNITTEST_PASSWORD`; prefer `-UserFile`) |
 | `-Address` / `-Port` | Target (default `127.0.0.1:11740`) |
-| `-Change` | Login option, default `Never`. Never auto-escalates to `Force`. |
+| `-Change` | Login option, default `Never`. Only `Never` or `Keep` are accepted; `Force`/`Try` are rejected (they download or online-change). |
 | `-StartIfStopped` | Allow starting a **remote** application that is not RUN (default: local only) |
 | `-Device` / `-App` | Device / application node names |
 | `-TimeoutSec` | Poll timeout for `g_xDone` (default 60; watchdog = timeout + 45s) |
@@ -135,7 +135,9 @@ g_astCases[i].sName, .eStatus (0=pass 1=fail 2=skip), .sMessage
 ```
 
 Capacity is 64 cases (`UT_MAX_CASES` / `ARRAY[1..64]`). Overflow sets `g_xOverflow`
-and fails the run instead of silently dropping assertions.
+and fails the run instead of silently dropping assertions. Older `GVL_Test` builds
+without `g_xOverflow` still work: the runner then relies on `caseCount > MAX_CASES`
+alone, and that catch is less precise.
 
 A run is green only when: the reset read back as `g_xDone=FALSE, caseCount=0`; every
 registered suite finished (`suitesDone == suitesTotal`); at least one case exists; and

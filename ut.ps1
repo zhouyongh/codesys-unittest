@@ -1,7 +1,7 @@
 # ut.ps1 - codesys-unittest CLI (xunit-style CODESYS unit tests)
 # Usage:
-#   ut.ps1 run -Project <abs .project> [-UserFile f | -User u] [-Address ip] [-Port n]
-#              [-TimeoutSec 60] [-OutDir dir] [-Change Never|Try|Keep|Force]
+#   ut.ps1 run -Project <abs .project> [-UserFile f | -User u] [-Address ip] -Port n]
+#              [-TimeoutSec 60] [-OutDir dir] [-Change Never|Keep]
 #              [-Device name] [-App name] [-StartIfStopped] [-MaxAgeHours 2]
 #   ut.ps1 run -Mock [-OutDir dir]          # green synthetic run (wiring check)
 #   ut.ps1 run -MockFail [-OutDir dir]      # red synthetic run (report check)
@@ -13,8 +13,9 @@
 # Exit 0 = all passed; 1 = failures, zero cases, or ERR.
 # All text I/O is UTF-8. Passwords are NEVER written to files by this script:
 # pass -UserFile (preferred) or env CODESYS_UNITTEST_USER / CODESYS_UNITTEST_PASSWORD.
-# Login never auto-escalates to Force (Force = full download / wipes variables).
-# run NEVER downloads: call codesys-connect `download` explicitly when logic changed.
+# Login options are only Never|Keep. Force/Try are rejected: Force downloads and
+# wipes variables; Try may online-change. run NEVER downloads - call
+# codesys-connect `download` when logic changed, then run.
 param(
     [Parameter(Position = 0)]
     [string]$Command = "run",
@@ -45,12 +46,25 @@ try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 . (Join-Path $PSScriptRoot "common.ps1")
 if ($CodesysConnect) { $env:CODESYS_CONNECT_HOME = $CodesysConnect }
 
+# Login gate: this runner never downloads. Force = full download / wipes
+# variables; Try may online-change. Both are codesys-connect's job.
+$changeNorm = $Change.Trim()
+if ($changeNorm -notin @("Never", "Keep")) {
+    Write-Host "ERR -Change $changeNorm rejected. Use Never or Keep."
+    Write-Host "     Force/Try download or online-change; call codesys-connect 'download' first."
+    exit 1
+}
+
 $portNum = 11740
 try { $portNum = [int]$Port } catch { $portNum = 11740 }
 $timeoutNum = 60
 try { $timeoutNum = [int]$TimeoutSec } catch { $timeoutNum = 60 }
 $maxAgeNum = 2
 try { $maxAgeNum = [int]$MaxAgeHours } catch { $maxAgeNum = 2 }
+
+# per-run work dir so concurrent runs do not share results.json / target.txt
+$runId = $PID
+$work = Join-Path $env:USERPROFILE ".codesys-unittest\work-$runId"
 
 if ($UserFile) {
     if (-not (Test-Path $UserFile)) { Write-Host "ERR UserFile not found: $UserFile"; exit 1 }
@@ -133,7 +147,6 @@ function Invoke-RealRun {
     }
     $out = if ($OutDir) { $OutDir } else { Get-DefaultOutDir -ProjectFile $Project }
     New-Item -ItemType Directory -Force -Path $out | Out-Null
-    $work = Join-Path $env:USERPROFILE ".codesys-unittest\work"
     New-Item -ItemType Directory -Force -Path $work | Out-Null
     $resJson = Join-Path $work "results.json"
     if (Test-Path $resJson) { Remove-Item $resJson -Force }
@@ -166,7 +179,7 @@ function Invoke-RealRun {
         "log=$log",
         "address=$Address",
         "port=$Port",
-        "change=$Change",
+        "change=$changeNorm",
         "timeout_sec=$timeoutNum",
         "start_if_stopped=$(if ($allowStart) { 1 } else { 0 })"
     )
@@ -289,10 +302,19 @@ switch ($Command.ToLower()) {
             $res = $Results
             if (-not $res) {
                 $candidates = @(
-                    (Join-Path (Get-DefaultOutDir -ProjectFile $Project) "results.json"),
-                    (Join-Path $env:USERPROFILE ".codesys-unittest\work\results.json")
+                    (Join-Path (Get-DefaultOutDir -ProjectFile $Project) "results.json")
                 )
                 foreach ($c in $candidates) { if (Test-Path $c) { $res = $c; break } }
+                if (-not $res) {
+                    # newest per-run work dir
+                    $workRoot = Join-Path $env:USERPROFILE ".codesys-unittest"
+                    $latest = Get-ChildItem $workRoot -Directory -Filter "work-*" -ErrorAction SilentlyContinue |
+                        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+                    if ($latest) {
+                        $c = Join-Path $latest.FullName "results.json"
+                        if (Test-Path $c) { $res = $c }
+                    }
+                }
             }
             if (-not $res) {
                 Write-Host "ERR no results.json (run first or pass -Results)"
