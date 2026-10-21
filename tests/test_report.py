@@ -196,6 +196,24 @@ class TestReportFiles(unittest.TestCase):
         self.assertIsNotNone(failure)
         self.assertEqual(failure.get("type"), "PipelineError")
 
+    def test_xml_escaping_in_names_and_messages(self):
+        src = self._write({
+            u"done": True,
+            u"cases": [{
+                u"sName": u'S.<&"\'>',
+                u"eStatus": 1,
+                u"sMessage": u"x < y & z",
+            }],
+        })
+        rc, out = self._run_main(src)
+        self.assertEqual(rc, 1, out)
+        suite = self._junit()
+        case = suite.find("testcase")
+        self.assertEqual(case.get("name"), u'S.<&"\'>')
+        failure = case.find("failure")
+        self.assertEqual(failure.get("message"), u"x < y & z")
+        self.assertEqual(failure.text, u"x < y & z")
+
 
 if __name__ == "__main__":
     unittest.main()

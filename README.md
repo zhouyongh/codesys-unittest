@@ -72,10 +72,18 @@ python -m unittest discover -s tests -v
 | L1 | `tests/test_report.py` | red/green, error paths, JUnit counts, unicode |
 | L2 | `tests/test_reset.py` | reset order, hold, release, failure paths (fake IO) |
 | L3 | `tests/test_cli.py` | `-Change` gate, `-Mock` / `-MockFail`, `report`, `status` |
+| L3 | `tests/test_cli_real.py` | real launch path with a fake runner: target.txt, watchdog, results copy, no password in files |
+| L4 | `tests/test_test_ops_run.py` | `run_tests()` with fake projects / online app / GVL |
+| L5 | `tests/test_live_smoke.py` | two live runs on a prepared target (skipped by default) |
 
 The CLI tests pass `CODESYS_UNITTEST_PYTHON=sys.executable` to the child, so they
-do not depend on a `python` alias on PATH. CI runs the same command on Windows
-(`.github/workflows/self-tests.yml`).
+do not depend on a `python` alias on PATH. CI runs the default suite on Windows
+(`.github/workflows/self-tests.yml`); L5 is opt-in - see
+[docs/LIVE_SMOKE.md](docs/LIVE_SMOKE.md).
+
+`ut.ps1` also has test-only hooks used by L3/L4 (`CODESYS_UNITTEST_EXE`,
+`_PROFILE`, `_OPS`, `_WATCHDOG_SEC`); they are documented in the live-smoke
+guide, not in the user interface.
 
 Shared helpers live in `ut_parse.py` (pure parsing/policy) and `ut_run.py`
 (reset sequence, injectable IO); both are Python 2/3 and used by `test_ops.py`

@@ -192,23 +192,40 @@ function Invoke-RealRun {
     Write-Utf8File -Path $target -Text (($lines -join "`n") + "`n")
     $env:CODESYS_UNITTEST_TARGET = $target
 
-    $ops = Join-Path $PSScriptRoot "test_ops.py"
+    $ops = if ($env:CODESYS_UNITTEST_OPS) { $env:CODESYS_UNITTEST_OPS } else { Join-Path $PSScriptRoot "test_ops.py" }
     $bat = Join-Path $work "run_ut.bat"
     $utf8Bom = New-Object System.Text.UTF8Encoding $true
-    $connectHome = Get-CodesysConnectHome
-    $common = Join-Path $connectHome "common.ps1"
-    if (-not (Test-Path $common)) {
-        Write-Host "ERR cannot resolve CODESYS install (codesys-connect missing at $connectHome)"
-        return 1
+
+    # Test hook: CODESYS_UNITTEST_EXE/PROFILE let the CLI tests exercise the
+    # real launch path without a CODESYS install. Production uses -CodesysExe
+    # or the codesys-connect resolver.
+    $exe = $CodesysExe
+    $prof = $CodesysProfile
+    $needResolve = $true
+    if (-not $exe -and $env:CODESYS_UNITTEST_EXE) {
+        $exe = $env:CODESYS_UNITTEST_EXE
+        if (-not $prof) { $prof = $env:CODESYS_UNITTEST_PROFILE }
+        if (-not $prof) { $prof = "Test" }
+        $needResolve = $false
+    } elseif ($exe -and $prof) {
+        $needResolve = $false
     }
-    # resolve in a child scope so we do not clobber this script's functions
-    $inst = & {
-        param($common, $ex, $pr, $proj, $info)
-        . $common
-        Resolve-CodesysInstall -Exe $ex -ProfileName $pr -ProjectFile $proj -ProjectInfo $info
-    } $common $CodesysExe $CodesysProfile $Project $ProjectInfo
-    $exe = $inst.Exe
-    $prof = $inst.Profile
+    if ($needResolve) {
+        $connectHome = Get-CodesysConnectHome
+        $common = Join-Path $connectHome "common.ps1"
+        if (-not (Test-Path $common)) {
+            Write-Host "ERR cannot resolve CODESYS install (codesys-connect missing at $connectHome)"
+            return 1
+        }
+        # resolve in a child scope so we do not clobber this script's functions
+        $inst = & {
+            param($common, $ex, $pr, $proj, $info)
+            . $common
+            Resolve-CodesysInstall -Exe $ex -ProfileName $pr -ProjectFile $proj -ProjectInfo $info
+        } $common $CodesysExe $CodesysProfile $Project $ProjectInfo
+        $exe = $inst.Exe
+        $prof = $inst.Profile
+    }
     if (-not $exe) {
         Write-Host "ERR cannot resolve CODESYS install (set -CodesysExe)"
         return 1
@@ -228,6 +245,13 @@ function Invoke-RealRun {
     # does not become an orphan (taskkill /T). Never touch other CODESYS
     # processes - the user may have the IDE open.
     $watchdogSec = [Math]::Max($timeoutNum + 45, 60)
+    # Test hook: shorten the watchdog in the CLI tests.
+    if ($env:CODESYS_UNITTEST_WATCHDOG_SEC) {
+        try {
+            $wd = [int]$env:CODESYS_UNITTEST_WATCHDOG_SEC
+            if ($wd -gt 0) { $watchdogSec = $wd }
+        } catch {}
+    }
     $p = Start-Process -FilePath "cmd.exe" -ArgumentList @("/c", "`"$bat`"") -PassThru -WindowStyle Hidden
     $finished = $p.WaitForExit($watchdogSec * 1000)
     if (-not $finished) {

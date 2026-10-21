@@ -229,6 +229,7 @@ per project.
 | `tests/` | self-tests (stdlib unittest; run with `python -m unittest discover -s tests -v`) |
 | `lib/*.st` | test protocol + reference suite to copy into the PLC project |
 | `docs/ENGINEERING.md` | feature / regression / report / agent-prompt workflow |
+| `docs/LIVE_SMOKE.md` | opt-in live run: two green runs, red/structural checklist |
 | `examples/sample-app/` | minimal feature + suite + `structure_ops.txt` |
 | `examples/conveyor-loop/` | 4-feature demo (13 methods, 19 cases) + closed-loop walk-through |
 

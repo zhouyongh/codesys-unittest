@@ -31,6 +31,11 @@ import sys
 import time
 import traceback
 
+try:
+    unicode  # noqa: B018  (IronPython 2.7)
+except NameError:  # CPython 3, used by the host tests
+    unicode = str  # noqa: A001
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ut_parse import (  # noqa: E402
     MAX_CASES,
@@ -45,8 +50,14 @@ from ut_parse import (  # noqa: E402
 )
 from ut_run import arm_run as run_reset  # noqa: E402
 
-TARGET = os.environ.get("CODESYS_UNITTEST_TARGET") or os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "target.txt")
+DEFAULT_TARGET = os.path.join(os.path.dirname(os.path.abspath(__file__)), "target.txt")
+TARGET = os.environ.get("CODESYS_UNITTEST_TARGET") or DEFAULT_TARGET
+
+# Populated by configure(). Kept out of import so the host test suite can
+# import this module and drive run_tests() with fake CODESYS objects.
+CFG = {}
+LOG = u""
+RESULT = u""
 
 
 def write_json(path, obj):
@@ -71,10 +82,15 @@ def log_write(path, msg):
         pass
 
 
-CFG = load_cfg(TARGET)
-LOG = CFG.get(u"log", u"")
-RESULT = CFG.get(u"result", u"")
-log_write(LOG, u"test_ops start target=%s" % TARGET)
+def configure(target=None):
+    """Load target.txt into the module globals (called by main()/tests)."""
+    global TARGET, CFG, LOG, RESULT
+    if target:
+        TARGET = target
+    CFG = load_cfg(TARGET)
+    LOG = CFG.get(u"log", u"")
+    RESULT = CFG.get(u"result", u"")
+    return CFG
 
 
 def resolve_change(default_name=u"Never"):
@@ -517,10 +533,20 @@ def run_tests():
               % (RESULT, len(out["cases"]), computed_fail))
 
 
-try:
+def main():
+    configure()
+    log_write(LOG, u"test_ops start target=%s" % TARGET)
     run_tests()
-except Exception:
+
+
+# Run only when launched by ut.ps1 (which sets CODESYS_UNITTEST_TARGET).
+# Importing this module for tests must never execute a run - a leftover
+# target.txt next to the script must not be enough to start one.
+if os.environ.get(u"CODESYS_UNITTEST_TARGET"):
     try:
-        write_json(RESULT, {"error": traceback.format_exc(), "done": False})
+        main()
     except Exception:
-        pass
+        try:
+            write_json(RESULT, {"error": traceback.format_exc(), "done": False})
+        except Exception:
+            pass
