@@ -27,28 +27,25 @@
 import codecs
 import json
 import os
+import sys
 import time
 import traceback
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from ut_parse import (  # noqa: E402
+    MAX_CASES,
+    allow_start as may_start_app,
+    cross_check_fail_count,
+    is_local_address,
+    load_cfg,
+    to_status,
+    to_text,
+    to_uint,
+    validate_run,
+)
+
 TARGET = os.environ.get("CODESYS_UNITTEST_TARGET") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "target.txt")
-
-MAX_CASES = 64  # must match UT_MAX_CASES / g_astCases in lib/GVL_Test.st
-
-
-def load_cfg(path):
-    cfg = {}
-    f = codecs.open(path, "r", "utf-8")
-    try:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            cfg[k.strip()] = v.strip()
-    finally:
-        f.close()
-    return cfg
 
 
 def write_json(path, obj):
@@ -282,56 +279,6 @@ def ensure_gateway(dev):
         log_write(LOG, u"WARN set_gateway: %r" % (e,))
 
 
-def to_uint(v):
-    if v is True or v is False:
-        return 1 if v else 0
-    s = unicode(v).strip()
-    low = s.lower()
-    if low in (u"true", u"yes", u"on"):
-        return 1
-    if low in (u"false", u"no", u"off", u""):
-        return 0
-    if u"#" in s:
-        s = s.split(u"#")[-1]
-    try:
-        return int(float(s))
-    except Exception:
-        try:
-            return int(s)
-        except Exception:
-            return 0
-
-
-def to_text(v):
-    if v is None:
-        return u""
-    try:
-        s = unicode(v)
-    except Exception:
-        try:
-            s = unicode(v, "utf-8", "replace")
-        except Exception:
-            s = unicode(repr(v))
-    if len(s) >= 2 and s[0] == u"'" and s[-1] == u"'":
-        s = s[1:-1]
-    return s
-
-
-def to_status(v):
-    """Return (status, note). Anything unreadable counts as a failure."""
-    s = to_text(v).strip()
-    # CODESYS prints typed values as UINT#0 / LREAL#1.0 - strip the prefix
-    if u"#" in s:
-        s = s.split(u"#")[-1].strip()
-    try:
-        n = int(float(s))
-    except Exception:
-        return (1, u"unreadable status %r" % (v,))
-    if n not in (0, 1, 2):
-        return (1, u"unknown status %d" % n)
-    return (n, u"")
-
-
 def fail(msg, cases=None):
     log_write(LOG, u"FATAL " + msg)
     write_json(RESULT, {"done": False, "error": msg, "cases": cases or []})
@@ -495,22 +442,22 @@ def run_tests():
     log_write(LOG, u"login ok")
 
     # ensure running so suites advance - but never start a remote target unasked
-    is_local = CFG.get(u"address", u"127.0.0.1").strip().lower() in (
-        u"127.0.0.1", u"localhost", u"::1")
-    allow_start = CFG.get(u"start_if_stopped", u"0").strip().lower() in (
+    is_local = is_local_address(CFG.get(u"address", u"127.0.0.1"))
+    start_if_stopped = CFG.get(u"start_if_stopped", u"0").strip().lower() in (
         u"1", u"true", u"yes")
     try:
-        st = unicode(oapp.application_state).lower()
-        if st not in (u"run", u"running"):
-            if is_local or allow_start:
-                oapp.start()
-                log_write(LOG, u"started app (was %s)" % st)
-            else:
-                fail(u"application is %s on remote target %s; start it on site or pass "
-                     u"-StartIfStopped" % (st, CFG.get(u"address", u"?")))
-                return
-        else:
+        st = unicode(oapp.application_state)
+        ok_start, why = may_start_app(is_local, start_if_stopped, st)
+        st_l = st.lower()
+        if st_l in (u"run", u"running"):
             log_write(LOG, u"app already %s" % st)
+        elif ok_start:
+            oapp.start()
+            log_write(LOG, u"started app (was %s)" % st)
+        else:
+            fail(u"%s on remote target %s; start it on site or pass "
+                 u"-StartIfStopped" % (why, CFG.get(u"address", u"?")))
+            return
     except Exception as e:
         log_write(LOG, u"start: %r" % (e,))
 
@@ -587,21 +534,9 @@ def run_tests():
     except Exception:
         pass
 
-    if suites_total == 0:
-        fail(u"no suite registered (g_uiSuitesTotal=0) - PRG_Tests must set it and "
-             u"call the suites")
-        return
-    if suites_done != suites_total:
-        fail(u"g_xDone fired after %s of %s suites - update g_uiSuitesTotal in "
-             u"PRG_Tests when adding suites" % (suites_done, suites_total))
-        return
-    if case_count == 0:
-        fail(u"no test cases recorded - suites did not run (check Begin/Finish and "
-             u"the PRG_Tests registration)")
-        return
-    if case_count > MAX_CASES:
-        fail(u"caseCount=%s exceeds the %d-slot g_astCases array"
-             % (case_count, MAX_CASES))
+    err = validate_run(suites_total, suites_done, case_count, MAX_CASES)
+    if err:
+        fail(err + u" - check PRG_Tests registration and Begin/Finish")
         return
 
     for i in range(1, case_count + 1):
@@ -629,9 +564,9 @@ def run_tests():
 
     computed_fail = len([c for c in out["cases"] if c["eStatus"] == 1])
     computed_skip = len([c for c in out["cases"] if c["eStatus"] == 2])
-    if plc_fail != computed_fail:
-        fail(u"failCount mismatch: PLC reports %s, read %s - results are inconsistent"
-             % (plc_fail, computed_fail), out["cases"])
+    xerr = cross_check_fail_count(plc_fail, out["cases"])
+    if xerr:
+        fail(xerr + u" - results are inconsistent", out["cases"])
         return
     if plc_skip != computed_skip:
         # not fatal (skip bookkeeping can lag), but make it visible

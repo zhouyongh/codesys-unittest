@@ -53,3 +53,21 @@ codesys-connect session. `test_ops.py` reads login from env
 (`CODESYS_UNITTEST_USER`/`CODESYS_UNITTEST_PASSWORD`) or the codesys-connect session.
 
 Full interface: [SKILL.md](SKILL.md).
+
+## Self-test
+
+The runner has its own unit tests (stdlib `unittest`, no extra packages):
+
+`powershell
+python -m unittest discover -s tests -v
+`
+
+| Layer | File | Covers |
+|---|---|---|
+| L1 | `tests/test_parse.py` | typed status / uint parsing, cfg, run gates |
+| L1 | `tests/test_report.py` | red/green reports, JUnit counts, unicode |
+| L2 | `tests/test_test_ops_contract.py` | remote start policy, green-evidence rules |
+| L3 | `tests/test_cli.py` | `-Change` gate, `-Mock` / `-MockFail` |
+
+Shared pure helpers live in `ut_parse.py` (Python 2/3, used by both
+`test_ops.py` under IronPython and the host test suite).
