@@ -1,4 +1,4 @@
-// PATH: <Application>/F_Clamp
+// PATH: Application/F_Clamp
 // ===== DECLARATION =====
 FUNCTION F_Clamp : LREAL
 VAR_INPUT

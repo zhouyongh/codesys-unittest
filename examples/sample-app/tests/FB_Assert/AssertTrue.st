@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/AssertTrue
+// PATH: Application/FB_Assert/AssertTrue
 // ===== DECLARATION =====
 METHOD PUBLIC AssertTrue : BOOL
 VAR_INPUT

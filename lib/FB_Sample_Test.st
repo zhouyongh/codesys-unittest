@@ -1,7 +1,5 @@
-// FB_Sample_Test - minimal xunit-style suite (template, method-free body).
-// Prefer FB_F_Clamp_Test + methods for real suites; this one shows the
-// smallest possible suite shape.
-// PATH: <Application>/FB_Sample_Test
+// PATH: Application/FB_Sample_Test
+// ===== DECLARATION =====
 FUNCTION_BLOCK FB_Sample_Test
 VAR
     ass : FB_Assert;

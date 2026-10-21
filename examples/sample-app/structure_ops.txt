@@ -1,0 +1,23 @@
+CREATE_DUT|Application|UT_Case|Structure
+CREATE_GVL|Application|GVL_Test
+CREATE_FUN|Application|F_Clamp|LREAL
+CREATE_FB|Application|FB_Assert
+CREATE_METHOD|Application/FB_Assert|Begin|BOOL
+CREATE_METHOD|Application/FB_Assert|Finish
+CREATE_METHOD|Application/FB_Assert|Rec|BOOL
+CREATE_METHOD|Application/FB_Assert|ResetState
+CREATE_METHOD|Application/FB_Assert|AssertTrue|BOOL
+CREATE_METHOD|Application/FB_Assert|AssertFalse|BOOL
+CREATE_METHOD|Application/FB_Assert|AssertEquals_BOOL|BOOL
+CREATE_METHOD|Application/FB_Assert|AssertEquals_DINT|BOOL
+CREATE_METHOD|Application/FB_Assert|AssertEquals_LREAL|BOOL
+CREATE_METHOD|Application/FB_Assert|Skip
+CREATE_FB|Application|FB_F_Clamp_Test
+CREATE_METHOD|Application/FB_F_Clamp_Test|Test_InsideRangeReturnsValue
+CREATE_METHOD|Application/FB_F_Clamp_Test|Test_BelowLowReturnsLow
+CREATE_METHOD|Application/FB_F_Clamp_Test|Test_AboveHighReturnsHigh
+CREATE_METHOD|Application/FB_F_Clamp_Test|Test_EqualBoundsReturnsBound
+CREATE_METHOD|Application/FB_F_Clamp_Test|Test_LowGreaterThanHighSwapsBounds
+CREATE_FB|Application|FB_Sample_Test
+CREATE_POU|Application|PRG_Tests
+ASSIGN_TO_TASK|Application/Task Configuration/MainTask|Application/PRG_Tests

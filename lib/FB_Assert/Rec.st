@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/Rec
+// PATH: Application/FB_Assert/Rec
 // ===== DECLARATION =====
 METHOD PRIVATE Rec : BOOL
 VAR_INPUT
@@ -14,6 +14,7 @@ IF NOT xStarted THEN
     Begin('Unnamed');
 END_IF
 IF GVL_Test.g_uiCaseCount >= UT_MAX_CASES THEN
+    GVL_Test.g_xOverflow := TRUE;
     Rec := FALSE; RETURN;
 END_IF
 uiIdx := GVL_Test.g_uiCaseCount + 1;

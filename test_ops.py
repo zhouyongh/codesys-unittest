@@ -11,10 +11,16 @@
 #     never write passwords into target.txt)
 #   timeout_sec=60
 #   change=Never|Try|Keep|Force   (login only; NEVER auto-escalates to Force)
+#   start_if_stopped=0|1          (1 = start the app when it is not RUN)
 #
 # Output results.json (UTF-8):
 #   { "done": true, "caseCount": N, "failCount": N, "skipCount": N,
 #     "durationSec": S, "cases": [ {"sName","eStatus","sMessage","sSuite"} ] }
+#   On any pipeline problem: { "done": false, "error": "...", "cases": [...] }
+#
+# A run is only green when there is positive evidence that it really ran:
+#   reset read back as clear, at least one case, all registered suites done,
+#   every case readable and the PLC fail counter matching what was read.
 
 import codecs
 import json
@@ -24,6 +30,8 @@ import traceback
 
 TARGET = os.environ.get("CODESYS_UNITTEST_TARGET") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "target.txt")
+
+MAX_CASES = 64  # must match UT_MAX_CASES / g_astCases in lib/GVL_Test.st
 
 
 def load_cfg(path):
@@ -90,6 +98,7 @@ def do_login(oapp):
 
 def find_app(proj):
     apps = []
+
     def walk(o, prefix):
         try:
             if getattr(o, u"is_application", False):
@@ -107,6 +116,7 @@ def find_app(proj):
             except Exception:
                 nm = u"?"
             walk(k, prefix + u"/" + nm if prefix else nm)
+
     for top in (proj.get_children() or []):
         try:
             nm = unicode(top.get_name())
@@ -137,6 +147,7 @@ def find_app(proj):
 def find_device(proj):
     name = CFG.get(u"device", u"")
     found = []
+
     def consider(o, nm):
         is_dev = False
         try:
@@ -151,6 +162,7 @@ def find_device(proj):
                     found.append(o)
             elif not found:
                 found.append(o)
+
     def walk(o):
         if found and name:
             return
@@ -166,6 +178,7 @@ def find_device(proj):
             consider(k, nm)
             if not (found and name):
                 walk(k)
+
     for top in (proj.get_children() or []):
         try:
             nm = unicode(top.get_name())
@@ -178,10 +191,30 @@ def find_device(proj):
 
 
 def ensure_gateway(dev):
+    """Configure device communication (local SoftMotion / Control Win).
+
+    Keep in sync with codesys-connect/online_ops.py: filling the communication
+    settings object (device_name / device_address / gateway_guid) is the
+    preferred path there and is required on some builds. A copy of only the
+    set_gateway_* helpers is not enough.
+    """
     address = CFG.get(u"address", u"127.0.0.1")
     port = CFG.get(u"port", u"11740")
     gw_name = CFG.get(u"gateway", u"Gateway-1")
-    dev_name = CFG.get(u"device_name", u"Device")
+    dev_name = CFG.get(u"device_name", u"")
+    if not dev_name:
+        dev_name = CFG.get(u"device", u"Device")
+
+    cs = None
+    try:
+        cs = dev.get_device_communication_settings()
+        log_write(LOG, u"comm_settings before: device_name=%r address=%r gw=%r" % (
+            getattr(cs, u"device_name", u"?"),
+            getattr(cs, u"device_address", u"?"),
+            getattr(cs, u"gateway_guid", u"?")))
+    except Exception as e:
+        log_write(LOG, u"comm_settings err=%r" % (e,))
+
     gateway = None
     try:
         gws = online.gateways
@@ -189,22 +222,62 @@ def ensure_gateway(dev):
             found = list(gws.find_with_name(gw_name))
             if found:
                 gateway = found[0]
-        except Exception:
-            pass
+        except Exception as e:
+            log_write(LOG, u"find_with_name: %r" % (e,))
         if gateway is None:
             try:
                 gateway = gws[0]
-            except Exception:
-                pass
+            except Exception as e:
+                log_write(LOG, u"gws[0]: %r" % (e,))
     except Exception as e:
         log_write(LOG, u"gateways: %r" % (e,))
+    log_write(LOG, u"gateway obj=%r" % (gateway,))
+
+    # preferred: fill the communication settings directly
+    try:
+        if cs is not None:
+            try:
+                cs.device_name = dev_name
+            except Exception as e:
+                log_write(LOG, u"cs.device_name: %r" % (e,))
+            try:
+                if port and port not in address:
+                    cs.device_address = u"%s:%s" % (address, port)
+                else:
+                    cs.device_address = address
+            except Exception as e:
+                log_write(LOG, u"cs.device_address: %r" % (e,))
+            try:
+                if gateway is not None:
+                    cs.gateway_guid = gateway.guid
+            except Exception as e:
+                log_write(LOG, u"cs.gateway_guid: %r" % (e,))
+            log_write(LOG, u"comm_settings updated name=%s addr=%s" % (
+                dev_name, getattr(cs, u"device_address", u"?")))
+    except Exception as e:
+        log_write(LOG, u"comm_settings write: %r" % (e,))
+
+    # also call set_gateway_* helpers (some builds require them)
     try:
         if gateway is not None:
-            dev.set_gateway_and_ip_address(gateway, address, int(port) if port else 11740)
+            try:
+                dev.set_gateway_and_ip_address(gateway, address, int(port) if port else 11740)
+                log_write(LOG, u"set_gateway_and_ip_address ok")
+            except Exception as e:
+                log_write(LOG, u"set_gateway_and_ip_address: %r" % (e,))
+                try:
+                    dev.set_gateway_and_device_name(gateway, dev_name)
+                    log_write(LOG, u"set_gateway_and_device_name ok")
+                except Exception as e2:
+                    log_write(LOG, u"set_gateway_and_device_name: %r" % (e2,))
         else:
-            dev.set_gateway_and_device_name(gw_name, dev_name)
+            try:
+                dev.set_gateway_and_device_name(gw_name, dev_name)
+                log_write(LOG, u"set_gateway_and_device_name(string) ok")
+            except Exception as e:
+                log_write(LOG, u"set_gateway_and_device_name(string): %r" % (e,))
     except Exception as e:
-        log_write(LOG, u"set_gateway: %r" % (e,))
+        log_write(LOG, u"WARN set_gateway: %r" % (e,))
 
 
 def to_uint(v):
@@ -230,10 +303,33 @@ def to_uint(v):
 def to_text(v):
     if v is None:
         return u""
-    s = unicode(v)
+    try:
+        s = unicode(v)
+    except Exception:
+        try:
+            s = unicode(v, "utf-8", "replace")
+        except Exception:
+            s = unicode(repr(v))
     if len(s) >= 2 and s[0] == u"'" and s[-1] == u"'":
         s = s[1:-1]
     return s
+
+
+def to_status(v):
+    """Return (status, note). Anything unreadable counts as a failure."""
+    s = to_text(v).strip()
+    try:
+        n = int(float(s))
+    except Exception:
+        return (1, u"unreadable status %r" % (v,))
+    if n not in (0, 1, 2):
+        return (1, u"unknown status %d" % n)
+    return (n, u"")
+
+
+def fail(msg, cases=None):
+    log_write(LOG, u"FATAL " + msg)
+    write_json(RESULT, {"done": False, "error": msg, "cases": cases or []})
 
 
 def read_credentials():
@@ -271,21 +367,81 @@ def read_credentials():
     return user, password
 
 
+def arm_run(oapp):
+    """Reset the previous run and PROVE the reset took effect.
+
+    Order matters: hold g_xReset TRUE, clear the counters while the suites are
+    dormant, read them back, and only then release the reset. Clearing after
+    the release lets a fast task record a case that is then wiped.
+    """
+    log_write(LOG, u"arm fresh run")
+    try:
+        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"TRUE")
+        oapp.write_prepared_values()
+    except Exception as e:
+        fail(u"cannot set GVL_Test.g_xReset: %r" % (e,))
+        return False
+
+    # hold the reset for more than one task cycle so every suite sees it
+    time.sleep(1.0)
+
+    has_overflow = False
+    try:
+        oapp.read_value(u"GVL_Test.g_xOverflow")
+        has_overflow = True
+    except Exception:
+        has_overflow = False  # older GVL_Test without the overflow flag
+
+    try:
+        oapp.set_prepared_value(u"GVL_Test.g_xDone", u"FALSE")
+        oapp.set_prepared_value(u"GVL_Test.g_uiCaseCount", u"0")
+        oapp.set_prepared_value(u"GVL_Test.g_uiFailCount", u"0")
+        oapp.set_prepared_value(u"GVL_Test.g_uiSkipCount", u"0")
+        oapp.set_prepared_value(u"GVL_Test.g_uiSuitesDone", u"0")
+        if has_overflow:
+            oapp.set_prepared_value(u"GVL_Test.g_xOverflow", u"FALSE")
+        oapp.write_prepared_values()
+    except Exception as e:
+        fail(u"cannot clear GVL_Test counters: %r" % (e,))
+        return False
+
+    try:
+        done0 = to_uint(oapp.read_value(u"GVL_Test.g_xDone"))
+        n0 = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
+        f0 = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
+    except Exception as e:
+        fail(u"cannot read GVL_Test back after reset: %r" % (e,))
+        return False
+    if done0 != 0 or n0 != 0 or f0 != 0:
+        fail(u"reset did not take effect (g_xDone=%s caseCount=%s failCount=%s) - "
+             u"is PRG_Tests running?" % (done0, n0, f0))
+        return False
+
+    try:
+        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"FALSE")
+        oapp.write_prepared_values()
+    except Exception as e:
+        fail(u"cannot release GVL_Test.g_xReset: %r" % (e,))
+        return False
+    return True
+
+
 def run_tests():
     started = time.time()
     log_write(LOG, u"run_tests enter")
     proj_path = CFG.get(u"project", u"")
     if not proj_path or not os.path.isfile(proj_path):
-        write_json(RESULT, {"error": u"project not found: " + proj_path, "done": False})
+        fail(u"project not found: " + proj_path)
         return
     log_write(LOG, u"opening project %s" % proj_path)
     proj = projects.open(proj_path)
     log_write(LOG, u"project opened")
     app_full, app = find_app(proj)
     dev = find_device(proj)
-    log_write(LOG, u"found app=%s dev=%s" % (app_full, unicode(dev.get_name()) if dev else None))
+    log_write(LOG, u"found app=%s dev=%s" % (
+        app_full, unicode(dev.get_name()) if dev else None))
     if app is None:
-        write_json(RESULT, {"error": u"no Application in project", "done": False})
+        fail(u"no Application in project")
         return
 
     user, password = read_credentials()
@@ -311,133 +467,166 @@ def run_tests():
     try:
         oapp = online.create_online_application(app)
     except Exception as e:
-        write_json(RESULT, {"error": u"create_online_application: %r" % (e,), "done": False})
+        fail(u"create_online_application: %r" % (e,))
         return
 
-    log_write(LOG, u"login change=%s" % CFG.get(u"change", u"Never"))
+    change = CFG.get(u"change", u"Never") or u"Never"
+    log_write(LOG, u"login change=%s" % change)
     if not do_login(oapp):
-        write_json(RESULT, {
-            "error": u"login failed (change=%s); not forcing download" % CFG.get(u"change", u"Never"),
-            "done": False})
+        fail(u"login failed (change=%s); this runner never downloads. Run "
+             u"codesys-connect 'download' when the project changed, then retry." % change)
         return
     log_write(LOG, u"login ok")
 
-    # ensure running so suites advance
+    # ensure running so suites advance - but never start a remote target unasked
+    is_local = CFG.get(u"address", u"127.0.0.1").strip().lower() in (
+        u"127.0.0.1", u"localhost", u"::1")
+    allow_start = CFG.get(u"start_if_stopped", u"0").strip().lower() in (
+        u"1", u"true", u"yes")
     try:
         st = unicode(oapp.application_state).lower()
         if st not in (u"run", u"running"):
-            oapp.start()
-            log_write(LOG, u"started app (was %s)" % st)
+            if is_local or allow_start:
+                oapp.start()
+                log_write(LOG, u"started app (was %s)" % st)
+            else:
+                fail(u"application is %s on remote target %s; start it on site or pass "
+                     u"-StartIfStopped" % (st, CFG.get(u"address", u"?")))
+                return
         else:
             log_write(LOG, u"app already %s" % st)
     except Exception as e:
         log_write(LOG, u"start: %r" % (e,))
+
+    log_write(LOG, u"probe GVL_Test protocol")
+    try:
+        nprobe = oapp.read_value(u"GVL_Test.g_uiCaseCount")
+        log_write(LOG, u"GVL_Test present caseCount=%s" % nprobe)
+    except Exception as e:
+        fail(u"GVL_Test protocol not found in the running application - import "
+             u"lib/GVL_Test.st etc. and download the project: %r" % (e,))
+        return
 
     timeout = 60
     try:
         timeout = int(CFG.get(u"timeout_sec", u"60"))
     except Exception:
         timeout = 60
-    log_write(LOG, u"probe GVL_Test protocol")
-    try:
-        nprobe = oapp.read_value(u"GVL_Test.g_uiCaseCount")
-        log_write(LOG, u"GVL_Test present caseCount=%s" % nprobe)
-    except Exception as e:
-        log_write(LOG, u"GVL_Test missing: %r" % (e,))
-        write_json(RESULT, {
-            "done": False,
-            "error": u"GVL_Test protocol not found in project (copy lib/GVL_Test.st etc.): %r" % (e,),
-            "cases": [],
-        })
+
+    if not arm_run(oapp):
         return
 
-    # arm a fresh run: pulse g_xReset so suite FB one-shot flags clear,
-    # zero the shared counters, clear sticky g_xDone
-    log_write(LOG, u"arm fresh run")
-    try:
-        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"TRUE")
-        oapp.write_prepared_values()
-        time.sleep(0.3)
-        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"FALSE")
-        oapp.set_prepared_value(u"GVL_Test.g_xDone", u"FALSE")
-        oapp.set_prepared_value(u"GVL_Test.g_uiCaseCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiFailCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiSkipCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiSuitesDone", u"0")
-        oapp.write_prepared_values()
-    except Exception as e:
-        log_write(LOG, u"arm reset: %r" % (e,))
-
     log_write(LOG, u"poll g_xDone timeout=%s" % timeout)
-
     done = False
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             v = oapp.read_value(u"GVL_Test.g_xDone")
-            log_write(LOG, u"g_xDone=%s" % v)
             if to_uint(v) == 1:
                 done = True
                 break
         except Exception as e:
-            log_write(LOG, u"poll g_xDone: %r" % (e,))
-            break
+            fail(u"poll GVL_Test.g_xDone: %r" % (e,))
+            return
         time.sleep(0.5)
     log_write(LOG, u"poll done=%s" % done)
 
+    if not done:
+        detail = u""
+        try:
+            total = to_uint(oapp.read_value(u"GVL_Test.g_uiSuitesTotal"))
+            sdone = to_uint(oapp.read_value(u"GVL_Test.g_uiSuitesDone"))
+            detail = u" (suitesDone=%s/%s)" % (sdone, total)
+        except Exception:
+            pass
+        fail(u"timeout waiting for GVL_Test.g_xDone (%ss)%s - check that PRG_Tests is "
+             u"assigned to a cyclic task and that the project was downloaded"
+             % (timeout, detail))
+        return
+
     out = {
-        "done": bool(done),
+        "done": True,
         "caseCount": 0,
         "failCount": 0,
         "skipCount": 0,
         "durationSec": round(time.time() - started, 3),
         "cases": [],
     }
-    if not done:
-        out["error"] = u"timeout waiting for GVL_Test.g_xDone (%ss)" % timeout
 
     try:
-        out["caseCount"] = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
-        out["failCount"] = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
-        out["skipCount"] = to_uint(oapp.read_value(u"GVL_Test.g_uiSkipCount"))
+        case_count = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
+        plc_fail = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
+        plc_skip = to_uint(oapp.read_value(u"GVL_Test.g_uiSkipCount"))
+        suites_total = to_uint(oapp.read_value(u"GVL_Test.g_uiSuitesTotal"))
+        suites_done = to_uint(oapp.read_value(u"GVL_Test.g_uiSuitesDone"))
     except Exception as e:
-        log_write(LOG, u"read counters: %r" % (e,))
+        fail(u"cannot read GVL_Test counters after g_xDone: %r" % (e,))
+        return
 
-    n = out["caseCount"] or 0
-    if n < 0:
-        n = 0
-    if n > 64:
-        n = 64
-        log_write(LOG, u"WARN caseCount>64, truncating")
-    for i in range(1, n + 1):
+    try:
+        if to_uint(oapp.read_value(u"GVL_Test.g_xOverflow")) != 0:
+            fail(u"more than %d cases were recorded (GVL_Test.g_xOverflow) - raise "
+                 u"UT_MAX_CASES and widen g_astCases" % MAX_CASES)
+            return
+    except Exception:
+        pass
+
+    if suites_total == 0:
+        fail(u"no suite registered (g_uiSuitesTotal=0) - PRG_Tests must set it and "
+             u"call the suites")
+        return
+    if suites_done != suites_total:
+        fail(u"g_xDone fired after %s of %s suites - update g_uiSuitesTotal in "
+             u"PRG_Tests when adding suites" % (suites_done, suites_total))
+        return
+    if case_count == 0:
+        fail(u"no test cases recorded - suites did not run (check Begin/Finish and "
+             u"the PRG_Tests registration)")
+        return
+    if case_count > MAX_CASES:
+        fail(u"caseCount=%s exceeds the %d-slot g_astCases array"
+             % (case_count, MAX_CASES))
+        return
+
+    for i in range(1, case_count + 1):
         base = u"GVL_Test.g_astCases[%d]" % i
         try:
             name = to_text(oapp.read_value(base + u".sName"))
-            st = to_uint(oapp.read_value(base + u".eStatus"))
+            status, note = to_status(oapp.read_value(base + u".eStatus"))
             msg = to_text(oapp.read_value(base + u".sMessage"))
         except Exception as e:
-            log_write(LOG, u"read case %d: %r" % (i, e,))
-            continue
+            fail(u"cannot read case %d: %r" % (i, e))
+            return
         if not name:
-            log_write(LOG, u"empty name at index %d, stop" % i)
-            break
+            fail(u"case %d has an empty name (caseCount=%s) - results are incomplete"
+                 % (i, case_count))
+            return
+        if note:
+            msg = note if not msg else (note + u": " + msg)
         suite = name.split(u".")[0] if u"." in name else u""
         out["cases"].append({
             "sName": name,
-            "eStatus": st,
+            "eStatus": status,
             "sMessage": msg,
             "sSuite": suite,
         })
 
-    # keep counters consistent with what we actually read
-    out["caseCount"] = len(out["cases"])
-    out["failCount"] = len([c for c in out["cases"] if c["eStatus"] == 1])
-    out["skipCount"] = len([c for c in out["cases"] if c["eStatus"] == 2])
-    if not out.get("done") and not out.get("error"):
-        out["error"] = u"timeout waiting for GVL_Test.g_xDone (%ss)" % timeout
+    computed_fail = len([c for c in out["cases"] if c["eStatus"] == 1])
+    computed_skip = len([c for c in out["cases"] if c["eStatus"] == 2])
+    if plc_fail != computed_fail:
+        fail(u"failCount mismatch: PLC reports %s, read %s - results are inconsistent"
+             % (plc_fail, computed_fail), out["cases"])
+        return
+    if plc_skip != computed_skip:
+        log_write(LOG, u"WARN skipCount mismatch plc=%s read=%s"
+                  % (plc_skip, computed_skip))
 
+    out["caseCount"] = len(out["cases"])
+    out["failCount"] = computed_fail
+    out["skipCount"] = computed_skip
     write_json(RESULT, out)
-    log_write(LOG, u"wrote %s cases=%d fail=%d" % (RESULT, len(out["cases"]), out["failCount"]))
+    log_write(LOG, u"wrote %s cases=%d fail=%d"
+              % (RESULT, len(out["cases"]), computed_fail))
 
 
 try:

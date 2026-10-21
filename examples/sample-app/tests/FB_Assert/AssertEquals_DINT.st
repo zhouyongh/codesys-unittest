@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/AssertEquals_DINT
+// PATH: Application/FB_Assert/AssertEquals_DINT
 // ===== DECLARATION =====
 METHOD PUBLIC AssertEquals_DINT : BOOL
 VAR_INPUT

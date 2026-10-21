@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test
+// PATH: Application/FB_F_Clamp_Test
 // ===== DECLARATION =====
 FUNCTION_BLOCK FB_F_Clamp_Test
 VAR

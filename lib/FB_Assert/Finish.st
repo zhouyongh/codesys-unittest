@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/Finish
+// PATH: Application/FB_Assert/Finish
 // ===== DECLARATION =====
 METHOD PUBLIC Finish
 // ===== IMPLEMENTATION =====

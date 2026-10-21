@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test/Test_InsideRangeReturnsValue
+// PATH: Application/FB_F_Clamp_Test/Test_InsideRangeReturnsValue
 // ===== DECLARATION =====
 METHOD PUBLIC Test_InsideRangeReturnsValue
 // ===== IMPLEMENTATION =====

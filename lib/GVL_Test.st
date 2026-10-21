@@ -1,4 +1,4 @@
-// PATH: <Application>/GVL_Test
+// PATH: Application/GVL_Test
 // ===== DECLARATION =====
 VAR_GLOBAL CONSTANT
     UT_MAX_CASES : UINT := 64;
@@ -11,6 +11,7 @@ VAR_GLOBAL
     g_xRunning : BOOL;
     g_xDone : BOOL;
     g_xReset : BOOL;
+    g_xOverflow : BOOL;   // set when more than UT_MAX_CASES cases were recorded
     g_uiCaseCount : UINT;
     g_uiFailCount : UINT;
     g_uiSkipCount : UINT;

@@ -1,4 +1,4 @@
-// PATH: <Application>/UT_Case
+// PATH: Application/UT_Case
 // ===== DECLARATION =====
 TYPE UT_Case :
 STRUCT

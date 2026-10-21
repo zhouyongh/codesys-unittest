@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test/Test_AboveHighReturnsHigh
+// PATH: Application/FB_F_Clamp_Test/Test_AboveHighReturnsHigh
 // ===== DECLARATION =====
 METHOD PUBLIC Test_AboveHighReturnsHigh
 // ===== IMPLEMENTATION =====

@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/Skip
+// PATH: Application/FB_Assert/Skip
 // ===== DECLARATION =====
 METHOD PUBLIC Skip
 VAR_INPUT
@@ -13,6 +13,7 @@ IF NOT xStarted THEN
     Begin('Unnamed');
 END_IF
 IF GVL_Test.g_uiCaseCount >= UT_MAX_CASES THEN
+    GVL_Test.g_xOverflow := TRUE;
     RETURN;
 END_IF
 uiIdx := GVL_Test.g_uiCaseCount + 1;

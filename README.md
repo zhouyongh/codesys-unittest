@@ -9,35 +9,47 @@ emits text + JUnit XML.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File ut.ps1 run -Project D:\repo\projects\App.project -UserFile user.txt
-powershell -NoProfile -ExecutionPolicy Bypass -File ut.ps1 run -Mock    # wire-check without a PLC
+powershell -NoProfile -ExecutionPolicy Bypass -File ut.ps1 run -Mock      # wiring check, green
+powershell -NoProfile -ExecutionPolicy Bypass -File ut.ps1 run -MockFail  # report check, red
 ```
 
 | Command | What it does |
 |---|---|
-| `run` | ensure runtime -> connect -> run suites -> report |
-| `run -Mock` | same pipeline, synthetic results |
-| `ensure-runtime` / `stop-runtime` | SoftMotion / Control Win lifecycle |
-| `report` | format last `results.json` |
+| `run` | ensure runtime -> login (Never) -> reset -> run suites -> report. **No download.** |
+| `run -Mock` / `run -MockFail` | synthetic green / red run, no PLC |
+| `ensure-runtime` / `stop-runtime` | SoftMotion / Control Win lifecycle (resolved install only) |
+| `report` | format `results.json` (from `out/`) into text + JUnit |
 
-Real PLC: pass `-Address <ip> -Port <port>` and skip the local runtime.
+Real PLC: pass `-Address <ip> -Port <port>` and start the application yourself
+(or pass `-StartIfStopped`). The runner never downloads and never force-logs-in;
+run codesys-connect `download` first when the logic changed.
 
 ## Authoring
 
-Copy `lib/GVL_Test.st`, `lib/FB_Assert.st`, `lib/PRG_Tests.st`, `lib/FB_Sample_Test.st`
-into the PLC project. Each suite FB = one `Test_*` method per case; asserts write into
-`GVL_Test`; the runner polls `GVL_Test.g_xDone`.
+Copy the protocol POUs from `lib/` (`GVL_Test`, `UT_Case`, `FB_Assert` + methods,
+`PRG_Tests`) into the project's Application node (`src/plc/<project>/Application/...`
+in a codesys-sync repo) and keep the `// PATH: Application/...` headers. `F_Clamp` +
+`FB_F_Clamp_Test` are the reference feature/suite. Each suite FB =
+one `Test_*` method per case; asserts write into `GVL_Test`; the runner polls
+`GVL_Test.g_xDone`. Register every suite in `PRG_Tests`, set `g_uiSuitesTotal` to the
+number of suites, and assign `PRG_Tests` to a cyclic task.
 
-Full workflow (feature / regression / report shape): see `SKILL.md`.
+`examples/sample-app/` is a complete reference: `Application/F_Clamp.st`, the test
+POUs, and `structure_ops.txt` for a one-shot codesys-sync import.
+
+Full workflow (feature / regression / report / troubleshooting): see `SKILL.md`.
 
 ## Requirements
 
 - Windows, PowerShell 5.1+
-- CODESYS 3.5.x with Scripting Engine
+- CODESYS 3.5.x with Scripting Engine (SP must match the project)
 - [codesys-connect](https://github.com/zhouyongh/codesys-connect) (sibling folder, or `CODESYS_CONNECT_HOME`)
-- Python 3 for `report.py` (`MIMO_PYTHON` or `python` on PATH)
+- [codesys-sync](https://github.com/zhouyongh/codesys-sync) (import `lib/`, build)
+- Python 3.8+ for `report.py` (`CODESYS_UNITTEST_PYTHON`, legacy `MIMO_PYTHON`, or `python` on PATH)
 
 Credentials live in codesys-connect's session file. Prefer `-UserFile`; this skill
-never writes passwords into work files. `test_ops.py` reads login from env
+never writes passwords into work files, and `run` no longer creates or updates a
+codesys-connect session. `test_ops.py` reads login from env
 (`CODESYS_UNITTEST_USER`/`CODESYS_UNITTEST_PASSWORD`) or the codesys-connect session.
 
 Full interface: [SKILL.md](SKILL.md).

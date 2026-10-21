@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test/Test_EqualBoundsReturnsBound
+// PATH: Application/FB_F_Clamp_Test/Test_EqualBoundsReturnsBound
 // ===== DECLARATION =====
 METHOD PUBLIC Test_EqualBoundsReturnsBound
 // ===== IMPLEMENTATION =====

@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_Assert/ResetState
+// PATH: Application/FB_Assert/ResetState
 // ===== DECLARATION =====
 METHOD PUBLIC ResetState
 // ===== IMPLEMENTATION =====

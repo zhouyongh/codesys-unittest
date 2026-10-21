@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test/Test_LowGreaterThanHighSwapsBounds
+// PATH: Application/FB_F_Clamp_Test/Test_LowGreaterThanHighSwapsBounds
 // ===== DECLARATION =====
 METHOD PUBLIC Test_LowGreaterThanHighSwapsBounds
 // ===== IMPLEMENTATION =====

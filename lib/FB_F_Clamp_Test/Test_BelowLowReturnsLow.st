@@ -1,4 +1,4 @@
-// PATH: <Application>/FB_F_Clamp_Test/Test_BelowLowReturnsLow
+// PATH: Application/FB_F_Clamp_Test/Test_BelowLowReturnsLow
 // ===== DECLARATION =====
 METHOD PUBLIC Test_BelowLowReturnsLow
 // ===== IMPLEMENTATION =====

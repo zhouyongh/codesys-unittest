@@ -1,128 +1,72 @@
 ---
 name: codesys-unittest
-description: CODESYS unit-test skill for AI - xunit-style ST test suites on a soft PLC or real target, with host-side runner, SoftMotion/Control Win lifecycle, and JUnit/text reports. Use when the user wants to write or run PLC unit tests, CODESYS unit test, codesys-unittest, SoftMotion test, 回归测试, 单元测试, or a testable feature workflow (write tests, run tests, regression, report).
+description: CODESYS unit tests for AI agents - xunit-style ST suites (suite / test / assert / fixture) compiled into the PLC and executed in-cycle on SoftMotion / Control Win or a real target, with a host runner that starts the runtime, logs in via codesys-connect with change=Never (never downloads), polls GVL_Test and emits a text report plus JUnit XML. Use when the user wants PLC unit tests, CODESYS unit test, codesys-unittest, PLC 测试 / 单元测试 / 回归测试 / 测试用例 / 写测试 / 红绿, or a testable feature workflow (write tests, run tests, regression gate). Not for reading/writing PLC variables (codesys-connect) or project import/export (codesys-sync).
 ---
 
 # codesys-unittest - xunit-style CODESYS unit tests
 
-Run unit tests on a CODESYS soft PLC (SoftMotion Win / Control Win) or a real target.
 Tests are ST function blocks using **xunit vocabulary** (suite / test / assert / fixture).
-A host runner starts the runtime, logs in via **codesys-connect**, polls results, and
-emits a compact text report plus JUnit XML.
+They are compiled into the application and assert **inside the PLC cycle**; the host
+only starts the runtime, logs in, polls `GVL_Test`, and formats the report.
 
 One command -> one short result. No MCP JSON dumps.
 
-## Why this shape
+## Prerequisites
 
-| Choice | Reason |
-|---|---|
-| xunit vocabulary, no framework install | AI writes uniformly structured tests; no library/license on the PLC |
-| Tests run **inside** the PLC | Deterministic cycle timing; assertions see real motion/FB state |
-| Host runner + codesys-connect | Same online path as production download/read/write |
-| Text + JUnit XML out | Humans and CI both consume it |
+| Need | Role | Notes |
+|---|---|---|
+| Windows + PowerShell 5.1+ | runner | `ut.ps1` / `common.ps1` |
+| CODESYS 3.5.x with Scripting Engine | compile + run | SP must match the project (see Version pinning) |
+| [codesys-connect](../codesys-connect/SKILL.md) | online channel, install resolution | sibling folder or `CODESYS_CONNECT_HOME`; **required** |
+| [codesys-sync](../codesys-sync/SKILL.md) | import `lib/`, build the project | needed for the repo workflow |
+| Python 3.8+ | `report.py` (text + JUnit) | `CODESYS_UNITTEST_PYTHON`, legacy `MIMO_PYTHON`, or `python` on PATH |
+| Project closed in the IDE | login/build | same rule as codesys-connect |
 
-Not used as the main path: host-only pytest, Matiec offline (no runtime),
-paid 3S Test Manager.
+## The two-step loop (read this)
+
+`ut.ps1 run` **never downloads**: it logs in with `change=Never` and only reads what is
+already running. Load new logic explicitly first:
+
+```powershell
+# 1) logic changed? import + download explicitly (codesys-sync / codesys-connect)
+powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-sync>\import.ps1 -Root <repo> -Sync -VerifyBuild
+powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-connect>\cc.ps1 connect -Project <abs .project> -UserFile <user.txt>
+powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-connect>\cc.ps1 download
+powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-connect>\cc.ps1 start
+
+# 2) run the tests (never downloads, never forces)
+powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 run `
+    -Project <abs .project> -UserFile <user.txt>
+```
+
+The runner does **not** call codesys-connect `connect`: that would login with its
+default `change=Try` (possible online change) and persist a session file. Credentials
+come from `-UserFile`, env, or an already existing codesys-connect session.
 
 ## Interface
 
 ```powershell
-# full pipeline: ensure runtime -> connect -> run -> report
-powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 run `
-    -Project <abs .project> [-User u -Password p] [-Address 127.0.0.1] [-Port 11740]
-
-# runtime only (SoftMotion / Control Win)
-powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 ensure-runtime
-powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 stop-runtime
-
-# report only (from last run results)
-powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 report
-
-# dry-run the pipeline with synthetic results (no PLC needed)
-powershell -NoProfile -ExecutionPolicy Bypass -File <codesys-unittest>\ut.ps1 run -Mock
+ut.ps1 run -Project <abs .project> [-UserFile f | -User u] [-Address 127.0.0.1] [-Port 11740]
+ut.ps1 ensure-runtime [-SoftMotion] [-MaxAgeHours 2]
+ut.ps1 stop-runtime
+ut.ps1 status
+ut.ps1 report [-Project <abs .project>] [-Results <results.json>] [-OutDir dir]
+ut.ps1 run -Mock        # green synthetic run - wiring check, no PLC
+ut.ps1 run -MockFail    # red synthetic run - report/JUnit check
 ```
 
 | Command | Meaning | Output |
 |---|---|---|
-| `ensure-runtime` | Start SoftMotion/Control Win if needed; verify port | `OK runtime=1 pid=... port=11740` |
-| `stop-runtime` | Stop the soft PLC | `OK runtime=0` |
-| `status` | Runtime pid + port reachability | `runtime_pid=... port_open=...` |
-| `run` | ensure -> connect -> download/start tests -> poll -> report | summary + report paths |
-| `run -Mock` | Same pipeline, synthetic results (for wiring checks) | summary + report paths |
-| `report` | Format `results.json` into text + JUnit XML | summary + report paths |
+| `run` | ensure runtime -> login (Never) -> reset -> poll -> report. **No download.** | summary + report paths |
+| `run -Mock` | synthetic all-green results | summary + report paths, exit 0 |
+| `run -MockFail` | synthetic result with one failure | summary + report paths, exit 1 |
+| `ensure-runtime` | start SoftMotion/Control Win if needed; verify port | `OK runtime=1 pid=... port=11740` |
+| `stop-runtime` | stop the soft PLC (resolved install first, all as fallback) | `OK runtime=0` |
+| `status` | runtime pid + port reachability | `runtime_pid=... port_open=...` |
+| `report` | format an existing `results.json` into text + JUnit | summary + report paths |
 
-Exit code 0 when all tests passed; 1 on any failure or `ERR` line.
-
-Real PLC: pass `-Address <ip> -Port <port>`. The runner does **not** start/stop a
-remote runtime - it only checks the port is reachable.
-
-## Test authoring (xunit vocabulary)
-
-Drop these into the PLC project (see `lib/`):
-
-| File | Role |
-|---|---|
-| `lib/GVL_Test.st` | Result protocol: counters + case records the runner reads online |
-| `lib/FB_Assert.st` | `AssertEquals_BOOL/DINT/LREAL`, `AssertTrue/False`, `Skip` - append to GVL_Test |
-| `lib/PRG_Tests.st` | Suite registry + `GVL_Test.g_xDone` when finished |
-| `lib/FB_Sample_Test.st` | Minimal suite showing fixture / test / assert |
-
-Convention:
-
-- Suite = one FUNCTION_BLOCK with `Test_*` methods (each method = one case).
-- Fixture = `VAR` init / `Setup` / `Teardown` on the suite FB.
-- Assert helpers write `name / status / message` into `GVL_Test`.
-- `PRG_Tests` calls every suite each cycle, then sets `g_xDone` when all are finished.
-
-Feature workflow (write a feature):
-
-1. Write `FB_Feature_Test` with the cases you want (`Test_happyPath`, `Test_edgeMin`, ...).
-2. Register it in `PRG_Tests`.
-3. `ut.ps1 run` - red is expected; fix the feature until green.
-4. Keep the suite; it becomes regression.
-
-Regression workflow:
-
-1. Full project download with all suites registered.
-2. `ut.ps1 run` - same command every time.
-3. JUnit XML for CI, text for humans. Non-zero exit blocks the merge.
-
-## Results protocol (online-readable)
-
-`GVL_Test` is the single source of truth. The runner polls `g_xDone`, then reads:
-
-```
-g_uiCaseCount, g_uiFailCount
-g_astCases[i].sName, .eStatus (0=pass 1=fail 2=skip), .sMessage
-```
-
-This is deliberately simple - no library dependency. Optional later: map CoUnit
-results into the same GVL shape.
-
-## Report shape
-
-Text (stdout + `report.txt`):
-
-```
-CODESYS unit tests - 3 cases, 1 failed
-PASS  Sample.Test_add
-FAIL  Sample.Test_divZero  expected no error, got div-by-zero
-SKIP  Sample.Test_slow
-JUnit: out/junit.xml
-```
-
-JUnit XML (`out/junit.xml`) - standard `<testsuite>` / `<testcase>` / `<failure>`.
-
-## Runtime lifecycle
-
-SoftMotion Win / Control Win is a Windows process. `ensure-runtime` will:
-
-1. Find `CODESYSControlService.exe` via install scan / env `CODESYS_UNITTEST_RTS_EXE`.
-2. Start `-d CODESYSSoftMotion.cfg` (or `-d CODESYSControl.cfg`) if the port is down.
-3. Poll TCP `address:port` (default `127.0.0.1:11740`) up to ~30s.
-4. If the process is older than the demo-license window (~2h), restart it.
-
-Real PLC: skip `ensure-runtime`, pass `-Address` / `-Port` to `run`.
+Exit code 0 only when the run really executed and passed: **zero cases, a missing
+`GVL_Test`, an ineffective reset, a timeout, or any failed assert all exit 1.**
 
 ## Parameters
 
@@ -130,48 +74,153 @@ Real PLC: skip `ensure-runtime`, pass `-Address` / `-Port` to `run`.
 |---|---|
 | `-Project` | Absolute `.project` path (required for a real `run`) |
 | `-UserFile` | Credentials file (preferred - keeps the password off the command line) |
-| `-User` | Target login username (password via `CODESYS_UNITTEST_PASSWORD` or UserFile) |
+| `-User` / `-Password` | Target login (password via env `CODESYS_UNITTEST_PASSWORD`; prefer `-UserFile`) |
 | `-Address` / `-Port` | Target (default `127.0.0.1:11740`) |
+| `-Change` | Login option, default `Never`. Never auto-escalates to `Force`. |
+| `-StartIfStopped` | Allow starting a **remote** application that is not RUN (default: local only) |
 | `-Device` / `-App` | Device / application node names |
-| `-Mock` | Synthetic results - exercises runner + report only |
-| `-TimeoutSec` | Poll timeout for `g_xDone` (default 60) |
+| `-TimeoutSec` | Poll timeout for `g_xDone` (default 60; watchdog = timeout + 45s) |
+| `-MaxAgeHours` | Restart the local runtime when older than this demo-license window (0 = never) |
 | `-OutDir` | Report directory (default `out/` beside the project) |
+| `-Results` | `report` only: explicit `results.json` (default: `<OutDir>/results.json`, then the work dir) |
+| `-Mock` / `-MockFail` | Synthetic results - exercises runner + report only |
 | `-CodesysConnect` | Path to codesys-connect (default: sibling `..\codesys-connect`) |
-| `-CodesysProfile` | Pin a CODESYS profile name |
+| `-CodesysExe` / `-CodesysProfile` / `-ProjectInfo` | Pin the CODESYS install / profile / export sidecar |
 
-Passwords are **never** written to files by this skill. Login comes from
-`-UserFile`, env `CODESYS_UNITTEST_USER`/`CODESYS_UNITTEST_PASSWORD`, or the
-codesys-connect session. Prefer `-UserFile`.
+Passwords are never written to files by this skill. Prefer `-UserFile`.
+
+## Test authoring (xunit vocabulary)
+
+Copy the protocol files (`GVL_Test`, `UT_Case`, `FB_Assert` + methods, `PRG_Tests`)
+into the project's Application node; `F_Clamp` + `FB_F_Clamp_Test` are the reference
+feature/suite (see `examples/sample-app/structure_ops.txt`):
+
+| File | Role |
+|---|---|
+| `lib/GVL_Test.st` | Result protocol: counters, `g_xDone`, `g_xReset`, case records |
+| `lib/FB_Assert.st` | `AssertEquals_BOOL/DINT/LREAL`, `AssertTrue/False`, `Skip` |
+| `lib/PRG_Tests.st` | Suite registry + `g_uiSuitesTotal` |
+| `lib/FB_Sample_Test.st` | Minimal suite showing fixture / test / assert (not registered) |
+| `lib/FB_F_Clamp_Test.st` + `FB_F_Clamp_Test/` | Reference suite, 5 cases |
+| `lib/F_Clamp.st` | The feature under test used by the reference suite |
+
+Conventions:
+
+- Suite = one `FUNCTION_BLOCK FB_<Feature>_Test`; one `Test_*` method per case.
+- Assert name is `Suite.Test_name` - the first segment becomes the JUnit classname.
+- Fixture = `VAR` init on the suite; call `ass.Begin('<Suite>')` once per cycle and
+  `ass.Finish()` at the end. `Begin` returns FALSE after the suite finished or while
+  `g_xReset` is TRUE, so cases are recorded exactly once per run.
+- Assertions must not use `0` as the expected value: an unimplemented function often
+  returns `0` and would pass.
+- ST methods return with `Method := FALSE; RETURN;` - never `RETURN FALSE` (C189).
+- `PRG_Tests` **must be assigned to a cyclic task** and must call every registered suite;
+  `g_uiSuitesTotal` must match the number of `Finish()` calls per run. The task must
+  also run faster than the 1 s reset hold, otherwise a stale suite never restarts.
+
+Feature workflow:
+
+1. Write `FB_Feature_Test` with the cases you want (happy path, boundary, guard).
+2. Register it in `PRG_Tests` (`g_uiSuitesTotal` += 1).
+3. Download, then `ut.ps1 run` - red is expected.
+4. Implement until green; keep the suite as regression.
+
+## Results protocol (online-readable)
+
+`GVL_Test` is the single source of truth. The runner polls `g_xDone`, then reads:
+
+```
+g_uiCaseCount, g_uiFailCount, g_uiSkipCount, g_uiSuitesTotal, g_uiSuitesDone, g_xOverflow
+g_astCases[i].sName, .eStatus (0=pass 1=fail 2=skip), .sMessage
+```
+
+Capacity is 64 cases (`UT_MAX_CASES` / `ARRAY[1..64]`). Overflow sets `g_xOverflow`
+and fails the run instead of silently dropping assertions.
+
+A run is green only when: the reset read back as `g_xDone=FALSE, caseCount=0`; every
+registered suite finished (`suitesDone == suitesTotal`); at least one case exists; and
+the PLC fail counter matches the records that were read.
+
+## Report shape
+
+Text (`stdout` + `<OutDir>/report.txt`):
+
+```
+CODESYS unit tests - 3 cases, 1 failed, 1 skipped
+PASS  Sample.Test_add
+FAIL  Sample.Test_divZeroGuard  expected TRUE
+SKIP  Sample.Test_slow  not on this target
+JUnit: .../out/junit.xml
+```
+
+`<OutDir>/junit.xml` - standard `<testsuite>/<testcase>/<failure>/<skipped>`; the
+`tests` / `failures` / `skipped` counters match the emitted nodes, and a pipeline
+error is emitted as a failing `pipeline` test case.
+
+`<OutDir>/results.json` is copied from the work directory so `ut.ps1 report` works
+per project.
+
+## Runtime lifecycle and safety
+
+- `ensure-runtime` only manages the `CODESYSControlService.exe` of the resolved
+  install; runtimes from other installs are left alone.
+- It restarts an aged local runtime (demo license ~2h, `-MaxAgeHours 0` disables).
+- `run` starts a stopped application **only** for a local target, or on a remote
+  target when `-StartIfStopped` is given. It never stops a remote runtime.
+- On timeout only the process tree of this run is killed (`taskkill /T`); the user's
+  IDE is never touched.
+- Login `change=Never`; there is no `Force` path in this skill.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Action |
+|---|---|---|
+| `ERR login failed (change=Never)` | project not downloaded, or device mismatch | run codesys-connect `download`; check DeviceID (`4102/0000 0004` for SoftMotion Win x64) |
+| `ERR GVL_Test protocol not found` | `lib/` not imported or not downloaded | import `lib/GVL_Test.st` (+ `UT_Case`), download |
+| `ERR timeout waiting for g_xDone (suitesDone=0/1)` | `PRG_Tests` not on a cyclic task, or a suite not called | assign the task, check `g_uiSuitesTotal` |
+| `ERR g_xDone fired after 0 of 1 suites` | `g_uiSuitesTotal` is stale/wrong | fix the count in `PRG_Tests` |
+| `ERR no test cases recorded` | suite body never reached `Begin`/asserts | check the suite body and reset flag |
+| `ERR failCount mismatch` | two suites clearing the shared GVL | never clear `GVL_Test` from a suite |
+| `ERR no results.json` | CODESYS crashed / script not found | read `%USERPROFILE%\.codesys-unittest\work\ut_log.txt` |
+| Chinese text garbled in the console | console code page | `report.txt` is always UTF-8; the runner sets `PYTHONIOENCODING` |
+
+## Pitfalls
+
+- SoftMotion **Win x64** DeviceID is `4102/0000 0004`; the project device must match
+  the runtime or login fails. Same rule as codesys-connect.
+- `.st` files must keep `// ===== DECLARATION =====` and `// ===== IMPLEMENTATION =====`
+  (codesys-sync skips a file without them). `TYPE` declarations are standalone DUTs,
+  never inside a GVL.
+- Keep tests pure (no wall-clock, no external I/O) so they behave the same on
+  simulation and on a real PLC. Hardware cases go into a separate suite and `Skip`.
+- Test POUs are compiled into the application: keep `PRG_Tests` out of the production
+  task, and remember `GVL_Test` costs ~13 KB (64 x ~200 B).
+- `change=Never` proves you are online, not that the **running build** matches the
+  `.project`. A stale download can still produce old (green) results - download
+  before a regression run.
+- Do not commit credentials or `out/`. Session lives in `%USERPROFILE%\.codesys-connect\`.
+- All text I/O is UTF-8. Do not rewrite files as ASCII.
+
+## When not to use
+
+- Pure algorithm checks without a runtime -> offline compiler / Matiec.
+- Load, performance, or HIL tests -> dedicated tooling.
+- Just reading/writing PLC variables -> codesys-connect.
+- Project import/export/build -> codesys-sync.
 
 ## Files
 
 | File | Role |
 |---|---|
 | `ut.ps1` | CLI entry |
-| `common.ps1` | runtime lifecycle + session + invoke helpers |
-| `test_ops.py` | CODESYS Scripting backend (poll + read results) |
-| `report.py` | results.json -> text + JUnit XML |
-| `lib/*.st` | test protocol templates to copy into the PLC project |
+| `common.ps1` | runtime lifecycle + install/session helpers |
+| `test_ops.py` | CODESYS Scripting backend (reset, poll, read results) - IronPython 2.7 |
+| `report.py` | results.json -> text + JUnit XML (Python 3.8+) |
+| `lib/*.st` | test protocol + reference suite to copy into the PLC project |
 | `docs/ENGINEERING.md` | feature / regression / report / agent-prompt workflow |
-| `examples/sample-app/` | minimal feature + suite (F_Clamp) |
-
-## Workflow docs
-
-See `docs/ENGINEERING.md` for: how to write tests with a feature, how regression
-runs, what the report looks like, and the agent prompt shape. See
-`examples/sample-app/` for a copy-paste feature + suite.
-
-## Pitfalls
-
-- SoftMotion **Win x64** DeviceID is `4102/0000 0004`; the project device must match
-  or login fails. Same rule as codesys-connect.
-- Demo runtime license is ~2 hours. `ensure-runtime` restarts an aged process.
-- Keep tests pure where possible (no wall-clock, no external I/O) so they are
-  deterministic on both simulation and a real PLC.
-- Do not commit credentials. Session lives in `%USERPROFILE%\.codesys-connect\`.
-- All text I/O is UTF-8. Do not rewrite files as ASCII.
+| `examples/sample-app/` | minimal feature + suite + `structure_ops.txt` |
 
 ## Version pinning
 
-Same rule as codesys-connect: match the project's last-saved compiler version.
+Match the project's last-saved compiler version (same rule as codesys-connect).
 Pass `-CodesysExe` / `-ProjectInfo` when auto-detect warns.

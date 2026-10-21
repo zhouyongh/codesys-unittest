@@ -12,25 +12,6 @@ function Get-CodesysConnectHome {
     return $sibling
 }
 
-function Invoke-ConnectOp {
-    # Thin wrapper over codesys-connect cc.ps1
-    param(
-        [string]$Command,
-        [string[]]$Rest = @(),
-        [hashtable]$Params = @{}
-    )
-    $connectHome = Get-CodesysConnectHome
-    $cc = Join-Path $connectHome "cc.ps1"
-    if (-not (Test-Path $cc)) {
-        throw "codesys-connect not found at $cc (set CODESYS_CONNECT_HOME)"
-    }
-    $argList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", $cc, $Command) + $Rest
-    foreach ($k in $Params.Keys) {
-        $argList += @("-$k", [string]$Params[$k])
-    }
-    & powershell @argList
-}
-
 function Find-RtsInstall {
     # Locate CODESYSControlService.exe + SoftMotion cfg
     if ($env:CODESYS_UNITTEST_RTS_EXE -and (Test-Path $env:CODESYS_UNITTEST_RTS_EXE)) {
@@ -91,8 +72,17 @@ function Test-PortOpen {
 }
 
 function Get-RtsProcess {
-    # The soft-PLC process (not the tray).
-    Get-Process -Name "CODESYSControlService" -ErrorAction SilentlyContinue
+    # All soft-PLC processes; pass -Exe to keep only the one from a given install.
+    param([string]$Exe = "")
+    $all = @(Get-Process -Name "CODESYSControlService" -ErrorAction SilentlyContinue)
+    if (-not $Exe) { return $all }
+    $matched = @()
+    foreach ($p in $all) {
+        try {
+            if ($p.Path -and ($p.Path -eq $Exe)) { $matched += $p }
+        } catch {}
+    }
+    return $matched
 }
 
 function Ensure-Runtime {
@@ -107,16 +97,26 @@ function Ensure-Runtime {
     $cfg = if ($SoftMotion -or (Test-Path $rts.SoftMotionCfg)) { $rts.SoftMotionCfg } else { $rts.ControlCfg }
     if (-not (Test-Path $cfg)) { $cfg = $rts.ControlCfg }
 
-    $proc = Get-RtsProcess | Select-Object -First 1
-    $restart = $false
-    if ($proc -and $proc.StartTime) {
-        $age = (New-TimeSpan -Start $proc.StartTime -End (Get-Date)).TotalHours
-        if ($MaxAgeHours -gt 0 -and $age -gt $MaxAgeHours) {
-            Write-Host "WARN runtime age $([math]::Round($age,2))h exceeds ${MaxAgeHours}h (demo license); restarting"
-            $restart = $true
-        }
+    # Only manage the runtime that belongs to the resolved install. A foreign
+    # runtime (another CODESYS install / another project, possibly licensed)
+    # must never be restarted by accident.
+    $all = @(Get-RtsProcess)
+    $proc = Get-RtsProcess -Exe $rts.Exe | Select-Object -First 1
+    if (-not $proc -and $all.Count -gt 0) {
+        Write-Host "INFO found $($all.Count) runtime process(es) from another install; not restarting them"
     }
-    if ($restart -and $proc) {
+
+    $restart = $false
+    if ($proc) {
+        try {
+            $age = (New-TimeSpan -Start $proc.StartTime -End (Get-Date)).TotalHours
+            if ($MaxAgeHours -gt 0 -and $age -gt $MaxAgeHours) {
+                Write-Host "WARN runtime pid=$($proc.Id) age=$([math]::Round($age,2))h exceeds ${MaxAgeHours}h (demo license); restarting this process only"
+                $restart = $true
+            }
+        } catch {}
+    }
+    if ($restart) {
         try { Stop-Process -Id $proc.Id -Force } catch {}
         Start-Sleep -Seconds 2
         $proc = $null
@@ -136,7 +136,7 @@ function Ensure-Runtime {
         }
     }
 
-    $proc = Get-RtsProcess | Select-Object -First 1
+    $proc = Get-RtsProcess -Exe $rts.Exe | Select-Object -First 1
     $open = Test-PortOpen -Address $Address -Port $Port
     if (-not $open) {
         Write-Host "ERR runtime port ${Address}:${Port} not open (see $cfg)"
@@ -148,15 +148,27 @@ function Ensure-Runtime {
 }
 
 function Stop-Runtime {
-    $proc = Get-RtsProcess
-    if ($proc) {
-        foreach ($p in $proc) {
-            try { Stop-Process -Id $p.Id -Force } catch {}
-        }
-        Start-Sleep -Seconds 2
+    # Prefer stopping the runtime of the resolved install; fall back to all
+    # CODESYSControlService processes when the install/path cannot be resolved.
+    $target = @()
+    try {
+        $rts = Find-RtsInstall
+        $target = @(Get-RtsProcess -Exe $rts.Exe)
+    } catch {}
+    if ($target.Count -eq 0) {
+        $target = @(Get-RtsProcess)
     }
-    $left = Get-RtsProcess
-    if ($left) {
+    if ($target.Count -eq 0) {
+        Write-Host "OK runtime=0"
+        return $true
+    }
+    Write-Host "stopping runtime pid=$($target.Id -join ',')"
+    foreach ($p in $target) {
+        try { Stop-Process -Id $p.Id -Force } catch {}
+    }
+    Start-Sleep -Seconds 2
+    $left = @(Get-RtsProcess)
+    if ($left.Count -gt 0) {
         Write-Host "ERR runtime still running (pid=$($left.Id -join ','))"
         return $false
     }

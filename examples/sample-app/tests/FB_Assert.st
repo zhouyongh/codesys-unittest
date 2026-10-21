@@ -7,8 +7,6 @@ VAR
     sSuite : STRING(40);
 END_VAR
 // ===== IMPLEMENTATION =====
-IF GVL_Test.g_xReset THEN
-    xStarted := FALSE;
-    xFinished := FALSE;
-    RETURN;
-END_IF
+// No body logic on purpose: calling a method does not execute the FB body.
+// One-shot state is handled by Begin / Finish / ResetState, and Begin clears
+// it while GVL_Test.g_xReset is TRUE.
