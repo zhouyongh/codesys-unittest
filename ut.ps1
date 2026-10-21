@@ -1,6 +1,6 @@
 # ut.ps1 - codesys-unittest CLI (xunit-style CODESYS unit tests)
 # Usage:
-#   ut.ps1 run -Project <abs .project> [-UserFile f | -User u] [-Address ip] -Port n]
+#   ut.ps1 run -Project <abs .project> [-UserFile f | -User u] [-Address ip] [-Port n]
 #              [-TimeoutSec 60] [-OutDir dir] [-Change Never|Keep]
 #              [-Device name] [-App name] [-StartIfStopped] [-MaxAgeHours 2]
 #   ut.ps1 run -Mock [-OutDir dir]          # green synthetic run (wiring check)
@@ -48,12 +48,9 @@ if ($CodesysConnect) { $env:CODESYS_CONNECT_HOME = $CodesysConnect }
 
 # Login gate: this runner never downloads. Force = full download / wipes
 # variables; Try may online-change. Both are codesys-connect's job.
+# The gate is enforced for `run` only: the other commands never log in.
 $changeNorm = $Change.Trim()
-if ($changeNorm -notin @("Never", "Keep")) {
-    Write-Host "ERR -Change $changeNorm rejected. Use Never or Keep."
-    Write-Host "     Force/Try download or online-change; call codesys-connect 'download' first."
-    exit 1
-}
+$changeOk = $changeNorm -in @("Never", "Keep")
 
 $portNum = 11740
 try { $portNum = [int]$Port } catch { $portNum = 11740 }
@@ -64,7 +61,12 @@ try { $maxAgeNum = [int]$MaxAgeHours } catch { $maxAgeNum = 2 }
 
 # per-run work dir so concurrent runs do not share results.json / target.txt
 $runId = $PID
-$work = Join-Path $env:USERPROFILE ".codesys-unittest\work-$runId"
+$workRoot = Join-Path $env:USERPROFILE ".codesys-unittest"
+# keep recent runs for the `report` fallback, drop stale ones
+Get-ChildItem $workRoot -Directory -Filter "work-*" -ErrorAction SilentlyContinue |
+    Where-Object { $_.LastWriteTime -lt (Get-Date).AddDays(-7) } |
+    ForEach-Object { try { Remove-Item -LiteralPath $_.FullName -Recurse -Force } catch {} }
+$work = Join-Path $workRoot "work-$runId"
 
 if ($UserFile) {
     if (-not (Test-Path $UserFile)) { Write-Host "ERR UserFile not found: $UserFile"; exit 1 }
@@ -277,6 +279,11 @@ switch ($Command.ToLower()) {
     }
     "run" {
         try {
+            if (-not $changeOk) {
+                Write-Host "ERR -Change $changeNorm rejected. Use Never or Keep."
+                Write-Host "     Force/Try download or online-change; call codesys-connect 'download' first."
+                exit 1
+            }
             if ($Mock -or $MockFail) {
                 $out = if ($OutDir) { $OutDir } else { Get-DefaultOutDir }
                 New-Item -ItemType Directory -Force -Path $out | Out-Null
@@ -307,7 +314,6 @@ switch ($Command.ToLower()) {
                 foreach ($c in $candidates) { if (Test-Path $c) { $res = $c; break } }
                 if (-not $res) {
                     # newest per-run work dir
-                    $workRoot = Join-Path $env:USERPROFILE ".codesys-unittest"
                     $latest = Get-ChildItem $workRoot -Directory -Filter "work-*" -ErrorAction SilentlyContinue |
                         Sort-Object LastWriteTime -Descending | Select-Object -First 1
                     if ($latest) {

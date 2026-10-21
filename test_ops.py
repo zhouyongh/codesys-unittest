@@ -43,6 +43,7 @@ from ut_parse import (  # noqa: E402
     to_uint,
     validate_run,
 )
+from ut_run import arm_run as run_reset  # noqa: E402
 
 TARGET = os.environ.get("CODESYS_UNITTEST_TARGET") or os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "target.txt")
@@ -319,76 +320,6 @@ def read_credentials():
     return user, password
 
 
-def arm_run(oapp):
-    """Reset the previous run and PROVE the reset took effect.
-
-    Order matters: hold g_xReset TRUE, clear the counters while the suites are
-    dormant, read them back, and only then release the reset. Clearing after
-    the release lets a fast task record a case that is then wiped.
-    """
-    log_write(LOG, u"arm fresh run")
-    try:
-        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"TRUE")
-        oapp.write_prepared_values()
-    except Exception as e:
-        fail(u"cannot set GVL_Test.g_xReset: %r" % (e,))
-        return False
-
-    # hold the reset long enough for every suite to see it, but poll the
-    # read-back so a fast task does not force a full sleep
-    deadline = time.time() + 1.0
-    while time.time() < deadline:
-        try:
-            done0 = to_uint(oapp.read_value(u"GVL_Test.g_xDone"))
-            n0 = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
-            f0 = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
-            if done0 == 0 and n0 == 0 and f0 == 0:
-                break
-        except Exception:
-            pass
-        time.sleep(0.1)
-
-    has_overflow = False
-    try:
-        oapp.read_value(u"GVL_Test.g_xOverflow")
-        has_overflow = True
-    except Exception:
-        has_overflow = False  # older GVL_Test without the overflow flag
-
-    try:
-        oapp.set_prepared_value(u"GVL_Test.g_xDone", u"FALSE")
-        oapp.set_prepared_value(u"GVL_Test.g_uiCaseCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiFailCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiSkipCount", u"0")
-        oapp.set_prepared_value(u"GVL_Test.g_uiSuitesDone", u"0")
-        if has_overflow:
-            oapp.set_prepared_value(u"GVL_Test.g_xOverflow", u"FALSE")
-        oapp.write_prepared_values()
-    except Exception as e:
-        fail(u"cannot clear GVL_Test counters: %r" % (e,))
-        return False
-
-    try:
-        done0 = to_uint(oapp.read_value(u"GVL_Test.g_xDone"))
-        n0 = to_uint(oapp.read_value(u"GVL_Test.g_uiCaseCount"))
-        f0 = to_uint(oapp.read_value(u"GVL_Test.g_uiFailCount"))
-    except Exception as e:
-        fail(u"cannot read GVL_Test back after reset: %r" % (e,))
-        return False
-    if done0 != 0 or n0 != 0 or f0 != 0:
-        fail(u"reset did not take effect (g_xDone=%s caseCount=%s failCount=%s) - "
-             u"is PRG_Tests running?" % (done0, n0, f0))
-        return False
-
-    try:
-        oapp.set_prepared_value(u"GVL_Test.g_xReset", u"FALSE")
-        oapp.write_prepared_values()
-    except Exception as e:
-        fail(u"cannot release GVL_Test.g_xReset: %r" % (e,))
-        return False
-    return True
-
-
 def run_tests():
     started = time.time()
     log_write(LOG, u"run_tests enter")
@@ -476,7 +407,10 @@ def run_tests():
     except Exception:
         timeout = 60
 
-    if not arm_run(oapp):
+    log_write(LOG, u"arm fresh run")
+    reset_err = run_reset(oapp, log=lambda m: log_write(LOG, m))
+    if reset_err:
+        fail(reset_err)
         return
 
     log_write(LOG, u"poll g_xDone timeout=%s" % timeout)

@@ -11,4 +11,6 @@ END_IF
 Test_StartRuns();
 Test_StopHalts();
 Test_EStopWins();
+Test_KeepsRunningAfterStartReleased();
+Test_StopBeatsStart();
 ass.Finish();

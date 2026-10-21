@@ -36,6 +36,8 @@ number of suites, and assign `PRG_Tests` to a cyclic task.
 
 `examples/sample-app/` is a complete reference: `Application/F_Clamp.st`, the test
 POUs, and `structure_ops.txt` for a one-shot codesys-sync import.
+`examples/conveyor-loop/` is a four-feature demo (13 methods / 19 cases) with a
+red → green → regression walk-through and a two-runs-in-a-row check.
 
 Full workflow (feature / regression / report / troubleshooting): see `SKILL.md`.
 
@@ -58,16 +60,23 @@ Full interface: [SKILL.md](SKILL.md).
 
 The runner has its own unit tests (stdlib `unittest`, no extra packages):
 
-`powershell
+```powershell
 python -m unittest discover -s tests -v
-`
+```
 
 | Layer | File | Covers |
 |---|---|---|
+| L0 | `tests/test_protocol.py` | `lib/` constants vs `ut_parse` (64 slots, symbols) |
+| L0 | `tests/test_conveyor_sample.py` | demo wiring: protocol copies, suite methods, `structure_ops`, `PRG_Tests` |
 | L1 | `tests/test_parse.py` | typed status / uint parsing, cfg, run gates |
-| L1 | `tests/test_report.py` | red/green reports, JUnit counts, unicode |
-| L2 | `tests/test_test_ops_contract.py` | remote start policy, green-evidence rules |
-| L3 | `tests/test_cli.py` | `-Change` gate, `-Mock` / `-MockFail` |
+| L1 | `tests/test_report.py` | red/green, error paths, JUnit counts, unicode |
+| L2 | `tests/test_reset.py` | reset order, hold, release, failure paths (fake IO) |
+| L3 | `tests/test_cli.py` | `-Change` gate, `-Mock` / `-MockFail`, `report`, `status` |
 
-Shared pure helpers live in `ut_parse.py` (Python 2/3, used by both
-`test_ops.py` under IronPython and the host test suite).
+The CLI tests pass `CODESYS_UNITTEST_PYTHON=sys.executable` to the child, so they
+do not depend on a `python` alias on PATH. CI runs the same command on Windows
+(`.github/workflows/self-tests.yml`).
+
+Shared helpers live in `ut_parse.py` (pure parsing/policy) and `ut_run.py`
+(reset sequence, injectable IO); both are Python 2/3 and used by `test_ops.py`
+under IronPython and by the host test suite.

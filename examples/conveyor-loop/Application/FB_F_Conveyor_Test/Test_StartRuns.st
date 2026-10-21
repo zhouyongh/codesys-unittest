@@ -5,6 +5,6 @@ VAR
     fb : FB_Conveyor;
 END_VAR
 // ===== IMPLEMENTATION =====
-fb(xStart := FALSE, xStop := FALSE, xEStop := TRUE);
-fb(xStart := TRUE, xStop := FALSE, xEStop := TRUE);
+fb(xStart := FALSE, xStop := TRUE, xEStop := TRUE);   // force stopped
+fb(xStart := TRUE, xStop := FALSE, xEStop := TRUE);   // start
 ass.AssertTrue('Conveyor.Test_StartRuns', fb.xRun);

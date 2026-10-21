@@ -60,6 +60,11 @@ class TestToStatus(unittest.TestCase):
         self.assertEqual(to_status(u"1"), (1, u""))
         self.assertEqual(to_status(u"2"), (2, u""))
 
+    def test_none_is_fail(self):
+        st, note = to_status(None)
+        self.assertEqual(st, 1)
+        self.assertIn(u"unreadable", note)
+
     def test_typed_prefix(self):
         self.assertEqual(to_status(u"UINT#0"), (0, u""))
         self.assertEqual(to_status(u"UINT#1"), (1, u""))
@@ -139,6 +144,9 @@ class TestValidateRun(unittest.TestCase):
 
     def test_zero_cases(self):
         self.assertIsNotNone(validate_run(1, 1, 0))
+
+    def test_negative_cases(self):
+        self.assertIsNotNone(validate_run(1, 1, -1))
 
     def test_overflow(self):
         self.assertIsNotNone(validate_run(1, 1, MAX_CASES + 1))

@@ -1,7 +1,12 @@
-# test_cli.py - L3 smoke tests for ut.ps1 parameter gates (no PLC needed).
+# test_cli.py - L3 smoke tests for ut.ps1 (no PLC needed).
 # Run: python -m unittest discover -s tests -v
 # Windows + PowerShell only; skipped elsewhere.
+#
+# The subprocess inherits CODESYS_UNITTEST_PYTHON=sys.executable so report.py
+# is run by the same interpreter as the tests (no dependency on a "python"
+# alias on PATH, which is a Store stub on some Windows machines).
 
+import json
 import os
 import shutil
 import subprocess
@@ -18,10 +23,18 @@ def _run(args, timeout=60):
         "powershell", "-NoProfile", "-ExecutionPolicy", "Bypass",
         "-File", UT,
     ] + args
+    env = dict(os.environ)
+    env["CODESYS_UNITTEST_PYTHON"] = sys.executable
     p = subprocess.Popen(
-        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, env=env
     )
-    out, _ = p.communicate(timeout=timeout)
+    try:
+        out, _ = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        out, _ = p.communicate()
+        raise AssertionError("ut.ps1 timed out: %r\n%s" % (
+            args, (out or b"").decode("utf-8", "replace")))
     text = out.decode("utf-8", "replace") if out else u""
     return p.returncode, text
 
@@ -36,6 +49,11 @@ class TestChangeGate(unittest.TestCase):
 
     def test_never_passes_gate(self):
         rc, text = _run(["run", "-Change", "Never", "-Project", r"D:\nope.project"])
+        self.assertNotIn("rejected", text)
+        self.assertNotEqual(rc, 0)  # project missing
+
+    def test_keep_passes_gate(self):
+        rc, text = _run(["run", "-Change", "Keep", "-Project", r"D:\nope.project"])
         self.assertNotIn("rejected", text)
         self.assertNotEqual(rc, 0)  # project missing
 
@@ -64,6 +82,40 @@ class TestMock(unittest.TestCase):
         finally:
             f.close()
         self.assertIn("FAIL", txt)
+
+
+@unittest.skipUnless(os.name == "nt", "ut.ps1 is Windows PowerShell")
+class TestReportAndStatus(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_report_command(self):
+        results = {
+            "done": True,
+            "caseCount": 1,
+            "failCount": 0,
+            "skipCount": 0,
+            "cases": [{"sName": "S.t1", "eStatus": 0, "sMessage": "", "sSuite": "S"}],
+        }
+        src = os.path.join(self.dir, "results.json")
+        f = open(src, "wb")
+        try:
+            f.write(json.dumps(results).encode("utf-8"))
+        finally:
+            f.close()
+        out = os.path.join(self.dir, "out")
+        rc, text = _run(["report", "-Results", src, "-OutDir", out])
+        self.assertEqual(rc, 0, text)
+        self.assertTrue(os.path.exists(os.path.join(out, "report.txt")))
+        self.assertTrue(os.path.exists(os.path.join(out, "junit.xml")))
+
+    def test_status_closed_port(self):
+        rc, text = _run(["status", "-Port", "1"])
+        self.assertNotEqual(rc, 0, text)
+        self.assertIn("port_open=False", text)
 
 
 if __name__ == "__main__":

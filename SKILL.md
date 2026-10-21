@@ -104,9 +104,15 @@ feature/suite (see `examples/sample-app/structure_ops.txt`):
 | `lib/FB_F_Clamp_Test.st` + `FB_F_Clamp_Test/` | Reference suite, 5 cases |
 | `lib/F_Clamp.st` | The feature under test used by the reference suite |
 
+A larger demo - four features, 13 methods / 19 cases, with a red → green →
+regression → two-run walk-through - is in `examples/conveyor-loop/`.
+
 Conventions:
 
-- Suite = one `FUNCTION_BLOCK FB_<Feature>_Test`; one `Test_*` method per case.
+- Suite = one `FUNCTION_BLOCK FB_<Feature>_Test`; a `Test_*` method groups the
+  assertions for one behaviour. Each `ass.Assert*` records one case, so a method
+  with several assertions contributes several cases (the conveyor-loop demo does
+  this on purpose).
 - Assert name is `Suite.Test_name` - the first segment becomes the JUnit classname.
 - Fixture = `VAR` init on the suite; call `ass.Begin('<Suite>')` once per cycle and
   `ass.Finish()` at the end. `Begin` returns FALSE after the suite finished or while
@@ -183,7 +189,7 @@ per project.
 | `ERR g_xDone fired after 0 of 1 suites` | `g_uiSuitesTotal` is stale/wrong | fix the count in `PRG_Tests` |
 | `ERR no test cases recorded` | suite body never reached `Begin`/asserts | check the suite body and reset flag |
 | `ERR failCount mismatch` | two suites clearing the shared GVL | never clear `GVL_Test` from a suite |
-| `ERR no results.json` | CODESYS crashed / script not found | read `%USERPROFILE%\.codesys-unittest\work\ut_log.txt` |
+| `ERR no results.json` | CODESYS crashed / script not found | read `%USERPROFILE%\.codesys-unittest\work-*\ut_log.txt` |
 | Chinese text garbled in the console | console code page | `report.txt` is always UTF-8; the runner sets `PYTHONIOENCODING` |
 
 ## Pitfalls
@@ -217,10 +223,14 @@ per project.
 | `ut.ps1` | CLI entry |
 | `common.ps1` | runtime lifecycle + install/session helpers |
 | `test_ops.py` | CODESYS Scripting backend (reset, poll, read results) - IronPython 2.7 |
+| `ut_parse.py` | pure parsing / policy helpers (Python 2/3) |
+| `ut_run.py` | reset/arm sequence with injectable IO (Python 2/3) |
 | `report.py` | results.json -> text + JUnit XML (Python 3.8+) |
+| `tests/` | self-tests (stdlib unittest; run with `python -m unittest discover -s tests -v`) |
 | `lib/*.st` | test protocol + reference suite to copy into the PLC project |
 | `docs/ENGINEERING.md` | feature / regression / report / agent-prompt workflow |
 | `examples/sample-app/` | minimal feature + suite + `structure_ops.txt` |
+| `examples/conveyor-loop/` | 4-feature demo (13 methods, 19 cases) + closed-loop walk-through |
 
 ## Version pinning
 

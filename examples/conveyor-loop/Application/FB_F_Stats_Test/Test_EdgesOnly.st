@@ -3,10 +3,12 @@
 METHOD PUBLIC Test_EdgesOnly
 VAR
     fb : FB_Stats;
-    diActual : DINT;
+    diBase : DINT;
 END_VAR
 // ===== IMPLEMENTATION =====
+// Drive low first so the next TRUE is a real rising edge even on a second run.
+fb(xCountPass := FALSE, xCountReject := FALSE);
+diBase := TO_DINT(fb.uiPass);
 fb(xCountPass := TRUE, xCountReject := FALSE);
 fb(xCountPass := TRUE, xCountReject := FALSE);
-diActual := TO_DINT(fb.uiPass);
-ass.AssertEquals_DINT('Stats.Test_edges_only', 1, diActual);
+ass.AssertEquals_DINT('Stats.Test_edges_only', 1, TO_DINT(fb.uiPass) - diBase);

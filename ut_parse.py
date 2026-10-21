@@ -8,7 +8,6 @@
 from __future__ import print_function
 
 import codecs
-import io
 
 try:
     unicode  # noqa: B018  (Python 2 / IronPython)
@@ -117,7 +116,7 @@ def validate_run(suites_total, suites_done, case_count, max_cases=MAX_CASES):
     if suites_done != suites_total:
         return (u"g_xDone fired after %s of %s suites"
                 % (suites_done, suites_total))
-    if case_count == 0:
+    if case_count <= 0:
         return u"no test cases recorded"
     if case_count > max_cases:
         return u"caseCount=%s exceeds the %d-slot array" % (case_count, max_cases)
