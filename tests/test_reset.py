@@ -109,10 +109,11 @@ class TestArmRun(unittest.TestCase):
         self.assertEqual(io.values[u"GVL_Test.g_xOverflow"], u"FALSE")
 
     def test_old_gvl_without_overflow_flag(self):
-        io = FakeIO(missing={u"GVL_Test.g_xOverflow"})
+        io = FakeIO(missing={u"GVL_Test.g_xOverflow", u"GVL_Test.g_sFirstFailure"})
         self.assertIsNone(arm_run(io, min_hold=0, sleep=lambda s: None))
         names = [c[1] for c in io.sets()]
         self.assertNotIn(u"GVL_Test.g_xOverflow", names)
+        self.assertNotIn(u"GVL_Test.g_sFirstFailure", names)
 
     def test_ineffective_reset_is_error_and_released(self):
         io = StickyIO(values={

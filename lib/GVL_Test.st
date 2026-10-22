@@ -1,5 +1,7 @@
 // PATH: Application/GVL_Test
 // ===== DECLARATION =====
+// GVL_Test - xunit-style result protocol (codesys-unittest).
+// Watch this GVL in the IDE for the TestResult summary.
 VAR_GLOBAL CONSTANT
     UT_MAX_CASES : UINT := 64;
     UT_PASS : UINT := 0;
@@ -11,12 +13,14 @@ VAR_GLOBAL
     g_xRunning : BOOL;
     g_xDone : BOOL;
     g_xReset : BOOL;
-    g_xOverflow : BOOL;   // set when more than UT_MAX_CASES cases were recorded
     g_uiCaseCount : UINT;
     g_uiFailCount : UINT;
     g_uiSkipCount : UINT;
     g_uiSuitesTotal : UINT;
     g_uiSuitesDone : UINT;
+    g_xOverflow : BOOL;
+    g_sFilter : STRING(80);
+    g_sFirstFailure : STRING(120);
     g_astCases : ARRAY[1..64] OF UT_Case;
 END_VAR
 // ===== IMPLEMENTATION =====

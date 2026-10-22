@@ -37,7 +37,9 @@ number of suites, and assign `PRG_Tests` to a cyclic task.
 `examples/sample-app/` is a complete reference: `Application/F_Clamp.st`, the test
 POUs, and `structure_ops.txt` for a one-shot codesys-sync import.
 `examples/conveyor-loop/` is a four-feature demo (13 methods / 19 cases) with a
-red → green → regression walk-through and a two-runs-in-a-row check.
+red → green → regression walk-through and a two-runs-in-a-row check. Its suites
+live in `Application/Tests` with per-case `Setup` / `TearDown`; see
+`docs/TEST_STYLE.md`.
 
 Full workflow (feature / regression / report / troubleshooting): see `SKILL.md`.
 

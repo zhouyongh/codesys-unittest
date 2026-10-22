@@ -23,12 +23,16 @@ _CLEAR = (
 )
 
 
-def _has_overflow_flag(io):
+def _has_field(io, name):
     try:
-        io.read_value(u"GVL_Test.g_xOverflow")
+        io.read_value(name)
         return True
     except Exception:
         return False
+
+
+def _has_overflow_flag(io):
+    return _has_field(io, u"GVL_Test.g_xOverflow")
 
 
 def _try_release(io, log):
@@ -78,11 +82,14 @@ def arm_run(io, min_hold=1.0, sleep=None, log=None):
     sleep(min_hold)
 
     has_overflow = _has_overflow_flag(io)
+    has_first_failure = _has_field(io, u"GVL_Test.g_sFirstFailure")
     try:
         for name, value in _CLEAR:
             io.set_prepared_value(name, value)
         if has_overflow:
             io.set_prepared_value(u"GVL_Test.g_xOverflow", u"FALSE")
+        if has_first_failure:
+            io.set_prepared_value(u"GVL_Test.g_sFirstFailure", u"''")
         io.write_prepared_values()
     except Exception as e:
         return _fail_with_release(io, log, u"cannot clear GVL_Test counters: %r" % (e,))

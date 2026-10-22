@@ -10,15 +10,20 @@ methods and 19 cases; a method with four assertions contributes four cases.
 ## Setup
 
 1. Copy the sample into a codesys-sync repo (see the README):
-   `src/plc/<App>/Application/` + `src/plc/<App>/structure_ops.txt`.
+   `src/plc/<App>/Application/` + `src/plc/<App>/Application/Tests/` +
+   `src/plc/<App>/structure_ops.txt`.
 2. A CODESYS project with a cyclic task `MainTask` (SoftMotion Win x64 works).
 3. codesys-connect credentials in a local `user.txt` (not committed).
 4. SoftMotion / Control Win running (`ut.ps1 ensure-runtime`).
 
+Test suites live under `Application/Tests`; `docs/TEST_STYLE.md` is the style
+checklist (headers, `FB_<Unit>_Test` naming, Setup / TearDown).
+
 ## Round 1 - decide what to sort
 
-**Source.** Add `F_DecideSort` and `FB_F_DecideSort_Test`. Keep the
-implementation a stub so the suite is honest about the gap:
+**Source.** Add `F_DecideSort` and `FB_DecideSort_Test` under
+`Application/Tests`. Keep the implementation a stub so the suite is honest about
+the gap:
 
 ```st
 F_DecideSort := FALSE;   // stub
@@ -71,7 +76,9 @@ Ship it as "cylinder out always" first → 3 of 7 fail: the delay case
 the same rhythm. The counter assertions use **deltas**, not absolute values, so
 a second run without downloading stays green.
 
-`PRG_Tests` must set `g_uiSuitesTotal := 4` and call all four suites.
+`PRG_Tests` computes `g_uiSuitesTotal` from `g_sFilter`: empty means all four
+suites, `Diverter` (or `FB_Diverter_Test`) means only that one. Set
+`g_sFilter` only when you want to isolate a suite; the total follows it.
 
 ## Round 4 - regression needs import + download
 
@@ -142,10 +149,11 @@ It must still be 19/19 green. This is the multi-round check:
 ## Round 6 (optional) - the runner's own guard
 
 The sample is also a place to see the runner fail for a structural reason, not
-just an assertion. Set the suite total wrong:
+just an assertion. Add one to the computed total so it no longer matches the
+suites actually called:
 
 ```st
-GVL_Test.g_uiSuitesTotal := 5;   // four suites actually run
+GVL_Test.g_uiSuitesTotal := GVL_Test.g_uiSuitesTotal + 1;   // wrong on purpose
 ```
 
 Import + download + run. The four suites finish, `g_xDone` is never set, and
@@ -155,7 +163,7 @@ after the poll timeout the runner reports:
 ERR timeout waiting for GVL_Test.g_xDone (60s) (suitesDone=4/5) ...
 ```
 
-Exit code 1. Restore the value to 4. This is the difference between "a test
+Exit code 1. Remove the extra `+ 1`. This is the difference between "a test
 failed" and "the test run itself is not trustworthy".
 
 ## What "closed" means

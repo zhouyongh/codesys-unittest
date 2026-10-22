@@ -105,7 +105,9 @@ feature/suite (see `examples/sample-app/structure_ops.txt`):
 | `lib/F_Clamp.st` | The feature under test used by the reference suite |
 
 A larger demo - four features, 13 methods / 19 cases, with a red → green →
-regression → two-run walk-through - is in `examples/conveyor-loop/`.
+regression → two-run walk-through - is in `examples/conveyor-loop/`. It keeps
+the suites in an `Application/Tests` folder with per-case `Setup` / `TearDown`;
+`docs/TEST_STYLE.md` is the checklist for that layout.
 
 Conventions:
 
@@ -230,6 +232,7 @@ per project.
 | `lib/*.st` | test protocol + reference suite to copy into the PLC project |
 | `docs/ENGINEERING.md` | feature / regression / report / agent-prompt workflow |
 | `docs/LIVE_SMOKE.md` | opt-in live run: two green runs, red/structural checklist |
+| `docs/TEST_STYLE.md` | suite layout: Tests/ folder, naming, suite/case headers, Setup/TearDown |
 | `examples/sample-app/` | minimal feature + suite + `structure_ops.txt` |
 | `examples/conveyor-loop/` | 4-feature demo (13 methods, 19 cases) + closed-loop walk-through |
 

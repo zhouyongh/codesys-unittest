@@ -27,5 +27,8 @@ ELSE
     GVL_Test.g_astCases[uiIdx].eStatus := UT_FAIL;
     GVL_Test.g_astCases[uiIdx].sMessage := sMessage;
     GVL_Test.g_uiFailCount := GVL_Test.g_uiFailCount + 1;
+    IF GVL_Test.g_sFirstFailure = '' THEN
+        GVL_Test.g_sFirstFailure := CONCAT(sName, CONCAT(': ', sMessage));
+    END_IF
 END_IF
 Rec := xOk;

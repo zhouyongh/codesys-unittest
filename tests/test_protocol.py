@@ -46,6 +46,7 @@ class TestGvlProtocol(unittest.TestCase):
             "g_xReset", "g_xDone", "g_xOverflow",
             "g_uiCaseCount", "g_uiFailCount", "g_uiSkipCount",
             "g_uiSuitesTotal", "g_uiSuitesDone", "g_astCases",
+            "g_sFilter", "g_sFirstFailure",
         ):
             self.assertIn(name, self.gvl, name)
 
@@ -67,6 +68,7 @@ class TestAssertProtocol(unittest.TestCase):
         text = _read(os.path.join("FB_Assert", "Rec.st"))
         self.assertIn("g_uiCaseCount", text)
         self.assertIn("g_xOverflow := TRUE", text)
+        self.assertIn("g_sFirstFailure", text)
 
     def test_begin_honours_reset(self):
         text = _read(os.path.join("FB_Assert", "Begin.st"))

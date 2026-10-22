@@ -1,44 +1,53 @@
-# codesys-unittest closed-loop sample: basic conveyor sort
-# Create objects, then the .st write-back fills them (codesys-sync import).
-CREATE_DUT|Application|UT_Case|Structure
-CREATE_GVL|Application|GVL_Test
-CREATE_FB|Application|FB_Assert
-CREATE_METHOD|Application/FB_Assert|Begin|BOOL
-CREATE_METHOD|Application/FB_Assert|ResetState
-CREATE_METHOD|Application/FB_Assert|Rec|BOOL
-CREATE_METHOD|Application/FB_Assert|AssertTrue|BOOL
-CREATE_METHOD|Application/FB_Assert|AssertFalse|BOOL
-CREATE_METHOD|Application/FB_Assert|AssertEquals_LREAL|BOOL
-CREATE_METHOD|Application/FB_Assert|AssertEquals_BOOL|BOOL
-CREATE_METHOD|Application/FB_Assert|AssertEquals_DINT|BOOL
-CREATE_METHOD|Application/FB_Assert|Skip
-CREATE_METHOD|Application/FB_Assert|Finish
+# conveyor-loop - Tests folder + features
+CREATE_FOLDER|Application|Tests
+
+CREATE_DUT|Application/Tests|UT_Case|Structure
+CREATE_GVL|Application/Tests|GVL_Test
+CREATE_FB |Application/Tests|FB_Assert
+CREATE_METHOD|Application/Tests/FB_Assert|Begin|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|ResetState
+CREATE_METHOD|Application/Tests/FB_Assert|Rec|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|AssertTrue|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|AssertFalse|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|AssertEquals_LREAL|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|AssertEquals_BOOL|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|AssertEquals_DINT|BOOL
+CREATE_METHOD|Application/Tests/FB_Assert|Skip
+CREATE_METHOD|Application/Tests/FB_Assert|Finish
 
 CREATE_FUN|Application|F_DecideSort|BOOL
-CREATE_FB|Application|FB_Diverter
-CREATE_FB|Application|FB_Conveyor
-CREATE_FB|Application|FB_Stats
+CREATE_FB |Application|FB_Diverter
+CREATE_FB |Application|FB_Conveyor
+CREATE_FB |Application|FB_Stats
 
-CREATE_FB|Application|FB_F_DecideSort_Test
-CREATE_METHOD|Application/FB_F_DecideSort_Test|Test_NoPieceNeverPushes
-CREATE_METHOD|Application/FB_F_DecideSort_Test|Test_QualityOkPasses
-CREATE_METHOD|Application/FB_F_DecideSort_Test|Test_QualityNgPushes
+CREATE_FB |Application/Tests|FB_DecideSort_Test
+CREATE_METHOD|Application/Tests/FB_DecideSort_Test|Setup
+CREATE_METHOD|Application/Tests/FB_DecideSort_Test|TearDown
+CREATE_METHOD|Application/Tests/FB_DecideSort_Test|Test_NoPieceNeverPushes
+CREATE_METHOD|Application/Tests/FB_DecideSort_Test|Test_QualityOkPasses
+CREATE_METHOD|Application/Tests/FB_DecideSort_Test|Test_QualityNgPushes
 
-CREATE_FB|Application|FB_F_Diverter_Test
-CREATE_METHOD|Application/FB_F_Diverter_Test|Test_DoesNotPushWhenIdle
-CREATE_METHOD|Application/FB_F_Diverter_Test|Test_ExtendsAfterDelayThenRetracts
-CREATE_METHOD|Application/FB_F_Diverter_Test|Test_CountsCompletedPushes
+CREATE_FB |Application/Tests|FB_Diverter_Test
+CREATE_METHOD|Application/Tests/FB_Diverter_Test|Setup
+CREATE_METHOD|Application/Tests/FB_Diverter_Test|TearDown
+CREATE_METHOD|Application/Tests/FB_Diverter_Test|Test_DoesNotPushWhenIdle
+CREATE_METHOD|Application/Tests/FB_Diverter_Test|Test_ExtendsAfterDelayThenRetracts
+CREATE_METHOD|Application/Tests/FB_Diverter_Test|Test_CountsCompletedPushes
 
-CREATE_FB|Application|FB_F_Conveyor_Test
-CREATE_METHOD|Application/FB_F_Conveyor_Test|Test_StartRuns
-CREATE_METHOD|Application/FB_F_Conveyor_Test|Test_StopHalts
-CREATE_METHOD|Application/FB_F_Conveyor_Test|Test_EStopWins
-CREATE_METHOD|Application/FB_F_Conveyor_Test|Test_KeepsRunningAfterStartReleased
-CREATE_METHOD|Application/FB_F_Conveyor_Test|Test_StopBeatsStart
+CREATE_FB |Application/Tests|FB_Conveyor_Test
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Setup
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|TearDown
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Test_StartRuns
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Test_StopHalts
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Test_EStopWins
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Test_KeepsRunningAfterStartReleased
+CREATE_METHOD|Application/Tests/FB_Conveyor_Test|Test_StopBeatsStart
 
-CREATE_FB|Application|FB_F_Stats_Test
-CREATE_METHOD|Application/FB_F_Stats_Test|Test_CountsPassAndReject
-CREATE_METHOD|Application/FB_F_Stats_Test|Test_EdgesOnly
+CREATE_FB |Application/Tests|FB_Stats_Test
+CREATE_METHOD|Application/Tests/FB_Stats_Test|Setup
+CREATE_METHOD|Application/Tests/FB_Stats_Test|TearDown
+CREATE_METHOD|Application/Tests/FB_Stats_Test|Test_CountsPassAndReject
+CREATE_METHOD|Application/Tests/FB_Stats_Test|Test_EdgesOnly
 
-CREATE_POU|Application|PRG_Tests
-ASSIGN_TO_TASK|Application/Task Configuration/MainTask|Application/PRG_Tests
+CREATE_POU|Application/Tests|PRG_Tests
+ASSIGN_TO_TASK|Application/Task Configuration/MainTask|Application/Tests/PRG_Tests
